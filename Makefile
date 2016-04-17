@@ -13,6 +13,9 @@ KDIR ?= /lib/modules/`uname -r`/build
 default:
 	$(MAKE) -C $(KDIR) M=$$PWD
 
+clean:
+	$(MAKE) -C $(KDIR) M=$$PWD clean
+
 install:
 	$(MAKE) -C $(KDIR) M=$$PWD modules_install
 	depmod -A
@@ -24,5 +27,6 @@ reload: install
 	modprobe snd_soc_davinci_mcasp
 	modprobe snd_soc_botic
 	@echo Reloaded.
+#	@dmesg | tail -10
 
 endif
