@@ -41,7 +41,8 @@ static int gpio_dsd_format_switch = -1;
 static int gpio_card_power_switch = -1;
 
 static char *pinconfig = "default";
-static char *serconfig = "MMMM"; /* I (I2S only), D (DSD only), M (I2S and DSD), S (SPDIF) */
+/* I (I2S only), D (DSD only), M (I2S and DSD), S (SPDIF), C (Capture) */
+static char *serconfig = "MMMM";
 
 static int ext_masterclk = ENABLE_EXT_MASTERCLK_44K1 | ENABLE_EXT_MASTERCLK_48K;
 static int dsd_format_switch = ENABLE_DSD_FORMAT_SWITCH;
@@ -65,50 +66,90 @@ static struct device_driver botic_codec_devdrv = {
     .name = "botic-codec-devdrv",
 };
 
+#define BOTIC_RATES (\
+            SNDRV_PCM_RATE_CONTINUOUS | \
+            SNDRV_PCM_RATE_11025 | \
+            SNDRV_PCM_RATE_22050 | \
+            SNDRV_PCM_RATE_44100 | \
+            SNDRV_PCM_RATE_88200 | \
+            SNDRV_PCM_RATE_176400 | \
+            SNDRV_PCM_RATE_352800 | \
+            SNDRV_PCM_RATE_705600 | \
+            SNDRV_PCM_RATE_16000 | \
+            SNDRV_PCM_RATE_32000 | \
+            SNDRV_PCM_RATE_48000 | \
+            SNDRV_PCM_RATE_96000 | \
+            SNDRV_PCM_RATE_192000 | \
+            SNDRV_PCM_RATE_384000 | \
+            SNDRV_PCM_RATE_768000 | \
+            0)
+
+#define BOTIC_FORMATS (\
+            SNDRV_PCM_FMTBIT_S16_LE | \
+            SNDRV_PCM_FMTBIT_S16_BE | \
+            SNDRV_PCM_FMTBIT_S24_3LE | \
+            SNDRV_PCM_FMTBIT_S24_3BE | \
+            SNDRV_PCM_FMTBIT_S24_LE | \
+            SNDRV_PCM_FMTBIT_S24_BE | \
+            SNDRV_PCM_FMTBIT_S32_LE | \
+            SNDRV_PCM_FMTBIT_S32_BE | \
+            SNDRV_PCM_FMTBIT_DSD_U8 | \
+            SNDRV_PCM_FMTBIT_DSD_U16_LE | \
+            SNDRV_PCM_FMTBIT_DSD_U16_BE | \
+            SNDRV_PCM_FMTBIT_DSD_U32_LE | \
+            SNDRV_PCM_FMTBIT_DSD_U32_BE | \
+            0)
+
 static struct snd_soc_dai_driver botic_dac_dai = {
     .name = BOTIC_CODEC_DAI_NAME,
     .playback = {
-        .stream_name = "Playback",
         .channels_min = 2,
         .channels_max = 8,
         .rate_min = 11025,
         .rate_max = 768000,
-        .rates =
-            SNDRV_PCM_RATE_CONTINUOUS |
-            SNDRV_PCM_RATE_11025 |
-            SNDRV_PCM_RATE_22050 |
-            SNDRV_PCM_RATE_44100 |
-            SNDRV_PCM_RATE_88200 |
-            SNDRV_PCM_RATE_176400 |
-            SNDRV_PCM_RATE_352800 |
-            SNDRV_PCM_RATE_705600 |
-            SNDRV_PCM_RATE_16000 |
-            SNDRV_PCM_RATE_32000 |
-            SNDRV_PCM_RATE_48000 |
-            SNDRV_PCM_RATE_96000 |
-            SNDRV_PCM_RATE_192000 |
-            SNDRV_PCM_RATE_384000 |
-            SNDRV_PCM_RATE_768000 |
-            0,
-        .formats =
-            SNDRV_PCM_FMTBIT_S16_LE |
-            SNDRV_PCM_FMTBIT_S16_BE |
-            SNDRV_PCM_FMTBIT_S24_3LE |
-            SNDRV_PCM_FMTBIT_S24_3BE |
-            SNDRV_PCM_FMTBIT_S24_LE |
-            SNDRV_PCM_FMTBIT_S24_BE |
-            SNDRV_PCM_FMTBIT_S32_LE |
-            SNDRV_PCM_FMTBIT_S32_BE |
-            SNDRV_PCM_FMTBIT_DSD_U8 |
-            SNDRV_PCM_FMTBIT_DSD_U16_LE |
-            SNDRV_PCM_FMTBIT_DSD_U16_BE |
-            SNDRV_PCM_FMTBIT_DSD_U32_LE |
-            SNDRV_PCM_FMTBIT_DSD_U32_BE |
-            0,
+        .rates = BOTIC_RATES,
+        .formats = BOTIC_FORMATS,
+    },
+    .capture = {
+        .channels_min = 2,
+        .channels_max = 8,
+        .rate_min = 11025,
+        .rate_max = 768000,
+        .rates = BOTIC_RATES,
+        .formats = BOTIC_FORMATS,
     },
 };
 
+static const struct snd_kcontrol_new botic_codec_controls[] = {
+    SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 1),
+    SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
+};
+
+static int botic_codec_probe(struct snd_soc_codec *codec)
+{
+    return 0;
+}
+
+static unsigned int botic_codec_read(struct snd_soc_codec *codec,
+        unsigned int reg)
+{
+    /* TODO */
+    return 0;
+}
+
+static int botic_codec_write(struct snd_soc_codec *codec,
+        unsigned int reg, unsigned int val)
+{
+    /* TODO */
+    return 0;
+}
+
 static struct snd_soc_codec_driver botic_codec_socdrv = {
+    .probe = botic_codec_probe,
+    .read = botic_codec_read,
+    .write = botic_codec_write,
+    .controls = botic_codec_controls,
+    .num_controls = ARRAY_SIZE(botic_codec_controls),
 };
 
 static int botic_codec_socdrv_registered;
@@ -169,7 +210,7 @@ static int botic_setup_serializers(struct snd_soc_dai *cpu_dai,
             case 'S':
                 n_spdif++;
                 break;
-            case 'R':
+            case 'C':
                 ser_setup->rx_slots[ser_setup->nch_rx++] = i;
                 continue;
             case '-':
