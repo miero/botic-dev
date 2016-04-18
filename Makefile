@@ -1,9 +1,8 @@
 ifneq ($(KERNELRELEASE),)
 
 # kbuild part of makefile
-obj-m				:= snd-soc-botic.o snd-soc-davinci-mcasp.o
-snd-soc-davinci-mcasp-objs	:= davinci-mcasp.o
-snd-soc-botic-objs		:= botic-card.o
+obj-m += davinci/
+obj-m += generic/
 
 else
 
@@ -14,7 +13,7 @@ build:
 	$(MAKE) -C $(KDIR) M=$$PWD
 
 install:
-	$(MAKE) -C $(KDIR) M=$$PWD modules_install
+	$(MAKE) -C $(KDIR) M=$$PWD INSTALL_MOD_DIR=kernel/sound/soc modules_install
 	depmod -A
 
 clean:
