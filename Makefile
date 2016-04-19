@@ -30,9 +30,12 @@ load:
 
 config:
 	# configure botic arguments that are not set on the kernel command line
-	echo "MDC-" > /sys/module/snd_soc_botic/parameters/serconfig
+	echo "MDR-" > /sys/module/snd_soc_botic/parameters/serconfig
 	echo 45158400 > /sys/module/snd_soc_botic/parameters/clk_44k1
 	echo 49152000 > /sys/module/snd_soc_botic/parameters/clk_48k
+	## BBB without external clocks
+	#echo 0 > /sys/module/snd_soc_botic/parameters/clk_44k1
+	#echo 24576000 > /sys/module/snd_soc_botic/parameters/clk_48k
 
 reload: build install unload load config
 	@echo Reloaded.
