@@ -41,7 +41,7 @@ static int gpio_dsd_format_switch = -1;
 static int gpio_card_power_switch = -1;
 
 static char *pinconfig = "default";
-/* I (I2S only), D (DSD only), M (I2S and DSD), S (SPDIF), C (Capture) */
+/* I (I2S only), D (DSD only), M (I2S and DSD), S (SPDIF), R (Record/Capture) */
 static char *serconfig = "MMMM";
 
 static int ext_masterclk = ENABLE_EXT_MASTERCLK_44K1 | ENABLE_EXT_MASTERCLK_48K;
@@ -210,7 +210,7 @@ static int botic_setup_serializers(struct snd_soc_dai *cpu_dai,
             case 'S':
                 n_spdif++;
                 break;
-            case 'C':
+            case 'R':
                 ser_setup->rx_slots[ser_setup->nch_rx++] = i;
                 continue;
             case '-':
