@@ -1,0 +1,15 @@
+Developer Remarks
+=================
+
+SPDIF with Hermes-BBB:
+----------------------
+(I2S routing) & echo "S---" > serconfig
+ - plays at 2,4,6 SPDIF channels (B3SE wiring)
+
+(DSD routing) & echo "S---" > serconfig
+ - can play at 1,5 SPDIF channels (B3SE wiring)
+ - not enabled in the botic-card.c
+
+(DSD routing) & echo "-S--" > serconfig
+ - can play at 2,4,6 SPDIF channels (B3SE wiring)
+ - not enabled in the botic-card.c

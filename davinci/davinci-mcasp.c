@@ -791,8 +791,15 @@ static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 	if (mcasp->version < MCASP_VERSION_3)
 		mcasp_set_bits(mcasp, DAVINCI_MCASP_PWREMUMGT_REG, MCASP_SOFT);
 
-	/* All PINS as McASP */
-	mcasp_set_reg(mcasp, DAVINCI_MCASP_PFUNC_REG, 0x00000000);
+	if (mcasp->op_mode != DAVINCI_MCASP_DIT_MODE) {
+		/* All PINS as McASP */
+		mcasp_set_reg(mcasp, DAVINCI_MCASP_PFUNC_REG, 0x00000000);
+	} else {
+		/* Deactivate the AFSX and ACLKX, only the SPDIF data is generated. */
+		mcasp_set_reg(mcasp, DAVINCI_MCASP_PFUNC_REG, 0x14000000);
+		mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AFSX | AFSR);
+		mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, ACLKX | AFSX);
+	}
 
 	if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		mcasp_set_reg(mcasp, DAVINCI_MCASP_TXSTAT_REG, 0xFFFFFFFF);
