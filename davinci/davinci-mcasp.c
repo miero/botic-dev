@@ -400,6 +400,11 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 	bool inv_fs = false;
 
 	pm_runtime_get_sync(mcasp->dev);
+	if ((fmt & SND_SOC_DAIFMT_FORMAT_MASK) == SND_SOC_DAIFMT_DIT) {
+		mcasp->op_mode = DAVINCI_MCASP_DIT_MODE;
+		goto out;
+	}
+	mcasp->op_mode = DAVINCI_MCASP_IIS_MODE;
 	mcasp->right_justified = false;
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_DSP_A:
@@ -542,6 +547,7 @@ static int __davinci_mcasp_set_clkdiv(struct snd_soc_dai *dai, int div_id,
 				      int div, bool explicit)
 {
 	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(dai);
+	int ret = 0;
 
 	pm_runtime_get_sync(mcasp->dev);
 	switch (div_id) {
@@ -553,6 +559,12 @@ static int __davinci_mcasp_set_clkdiv(struct snd_soc_dai *dai, int div_id,
 		break;
 
 	case 1:		/* BCLK divider */
+		if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE)
+			div /= 2;
+		if (div < 1 || 32 < div) {
+			ret = -EINVAL;
+			goto out;
+		}
 		mcasp_mod_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG,
 			       ACLKXDIV(div - 1), ACLKXDIV_MASK);
 		mcasp_mod_bits(mcasp, DAVINCI_MCASP_ACLKRCTL_REG,
@@ -579,11 +591,12 @@ static int __davinci_mcasp_set_clkdiv(struct snd_soc_dai *dai, int div_id,
 		break;
 
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
 	}
 
+out:
 	pm_runtime_put(mcasp->dev);
-	return 0;
+	return ret;
 }
 
 static int davinci_mcasp_set_clkdiv(struct snd_soc_dai *dai, int div_id,
@@ -711,6 +724,14 @@ static int davinci_config_channel_size(struct davinci_mcasp *mcasp,
 	 */
 	u32 rx_rotate = 0;
 
+	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE) {
+		/* DIT requires data aligned to bits 23-0 */
+		tx_rotate = (tx_rotate + 2) & 0x7;
+		if (sample_width > 24) {
+			mask &= 0xffffffUL << (sample_width - 24);
+		}
+	}
+
 	/*
 	 * Setting the tdm slot width either with set_clkdiv() or
 	 * set_tdm_slot() allows us to for example send 32 bits per
@@ -735,17 +756,20 @@ static int davinci_config_channel_size(struct davinci_mcasp *mcasp,
 		/* TODO: RX? */
 	}
 
-	if (mcasp->op_mode != DAVINCI_MCASP_DIT_MODE) {
-		mcasp_mod_bits(mcasp, DAVINCI_MCASP_RXFMT_REG, RXSSZ(fmt),
-			       RXSSZ(0x0F));
-		mcasp_mod_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, TXSSZ(fmt),
-			       TXSSZ(0x0F));
-		mcasp_mod_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, TXROT(tx_rotate),
-			       TXROT(7));
-		mcasp_mod_bits(mcasp, DAVINCI_MCASP_RXFMT_REG, RXROT(rx_rotate),
-			       RXROT(7));
-		mcasp_set_reg(mcasp, DAVINCI_MCASP_RXMASK_REG, mask);
+	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE) {
+		/* DIT requires 32-bit slot size */
+		fmt = 0xf;
 	}
+
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_RXFMT_REG, RXSSZ(fmt),
+			RXSSZ(0x0F));
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, TXSSZ(fmt),
+			TXSSZ(0x0F));
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, TXROT(tx_rotate),
+			TXROT(7));
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_RXFMT_REG, RXROT(rx_rotate),
+			RXROT(7));
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_RXMASK_REG, mask);
 
 	mcasp_set_reg(mcasp, DAVINCI_MCASP_TXMASK_REG, mask);
 
@@ -946,8 +970,14 @@ static int mcasp_i2s_hw_param(struct davinci_mcasp *mcasp, int stream,
 static int mcasp_dit_hw_param(struct davinci_mcasp *mcasp,
 			      unsigned int rate)
 {
+	u32 busel = 0;
 	u32 cs_value = 0;
 	u8 *cs_bytes = (u8*) &cs_value;
+
+	if (!mcasp->dat_port)
+		busel = TXSEL;
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, busel | FSXDLY(0),
+			TXSEL | TXORD | FSXDLY(3));
 
 	/* Set the TX format : 24 bit right rotation, 32 bit slot, Pad 0
 	   and LSB first */
@@ -963,9 +993,6 @@ static int mcasp_dit_hw_param(struct davinci_mcasp *mcasp,
 	mcasp_set_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, ACLKXE | TX_ASYNC);
 
 	mcasp_clr_bits(mcasp, DAVINCI_MCASP_XEVTCTL_REG, TXDATADMADIS);
-
-	/* Only 44100 and 48000 are valid, both have the same setting */
-	mcasp_set_bits(mcasp, DAVINCI_MCASP_AHCLKXCTL_REG, AHCLKXDIV(3));
 
 	/* Enable the DIT */
 	mcasp_set_bits(mcasp, DAVINCI_MCASP_TXDITCTL_REG, DITEN);
@@ -1951,6 +1978,7 @@ static int davinci_mcasp_probe(struct platform_device *pdev)
 	else
 		dma_data->filter_data = dma;
 
+    /* TODO */
 	/* RX is not valid in DIT mode */
 	if (mcasp->op_mode != DAVINCI_MCASP_DIT_MODE) {
 		dma_data = &mcasp->dma_data[SNDRV_PCM_STREAM_CAPTURE];
@@ -2052,6 +2080,17 @@ static int davinci_mcasp_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "register PCM failed: %d\n", ret);
 		goto err;
 	}
+
+    /* TODO: this raises exception at probe */
+#if 0
+	/* Defaults for DIT mode (backward compatibility) */
+	/* Set the TX format : 24 bit right rotation, 32 bit slot, Pad 0
+	 * and LSB first */
+	mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, TXROT(6) | TXSSZ(15));
+
+	/* Only 44100 and 48000 are valid, both have the same setting */
+	mcasp_set_bits(mcasp, DAVINCI_MCASP_AHCLKXCTL_REG, AHCLKXDIV(3));
+#endif
 
 	return 0;
 
