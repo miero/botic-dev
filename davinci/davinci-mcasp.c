@@ -787,19 +787,22 @@ static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 	u8 max_active_serializers = (channels + slots - 1) / slots;
 	int active_serializers, numevt;
 	u32 reg;
+	u32 disable_pins;
+
 	/* Default configuration */
 	if (mcasp->version < MCASP_VERSION_3)
 		mcasp_set_bits(mcasp, DAVINCI_MCASP_PWREMUMGT_REG, MCASP_SOFT);
 
-	if (mcasp->op_mode != DAVINCI_MCASP_DIT_MODE) {
-		/* All PINS as McASP */
-		mcasp_set_reg(mcasp, DAVINCI_MCASP_PFUNC_REG, 0x00000000);
+	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE) {
+		disable_pins = AFSX | ACLKX;
+	} else if (dsd_mode) {
+		disable_pins = AFSX;
 	} else {
-		/* Deactivate the AFSX and ACLKX, only the SPDIF data is generated. */
-		mcasp_set_reg(mcasp, DAVINCI_MCASP_PFUNC_REG, 0x14000000);
-		mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AFSX | AFSR);
-		mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, ACLKX | AFSX);
+		disable_pins = 0;
 	}
+	mcasp_set_reg(mcasp, DAVINCI_MCASP_PFUNC_REG, disable_pins);
+	mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, disable_pins);
+	mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, disable_pins);
 
 	if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		mcasp_set_reg(mcasp, DAVINCI_MCASP_TXSTAT_REG, 0xFFFFFFFF);
