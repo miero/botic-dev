@@ -2091,16 +2091,18 @@ static int davinci_mcasp_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-    /* TODO: this raises exception at probe */
-#if 0
+	pm_runtime_get_sync(mcasp->dev);
+
 	/* Defaults for DIT mode (backward compatibility) */
+
 	/* Set the TX format : 24 bit right rotation, 32 bit slot, Pad 0
 	 * and LSB first */
 	mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMT_REG, TXROT(6) | TXSSZ(15));
 
 	/* Only 44100 and 48000 are valid, both have the same setting */
 	mcasp_set_bits(mcasp, DAVINCI_MCASP_AHCLKXCTL_REG, AHCLKXDIV(3));
-#endif
+	
+	pm_runtime_put(mcasp->dev);
 
 	return 0;
 
