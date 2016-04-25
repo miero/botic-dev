@@ -576,12 +576,14 @@ static int asoc_botic_card_resume(struct platform_device *pdev)
 #define asoc_botic_card_resume NULL
 #endif
 
+#if defined(CONFIG_OF)
 static const struct of_device_id asoc_botic_card_dt_ids[] = {
     { .compatible = "botic-audio-card" },
     { },
 };
 
 MODULE_DEVICE_TABLE(of, asoc_botic_card_dt_ids);
+#endif
 
 static struct platform_driver asoc_botic_card_driver = {
     .probe = asoc_botic_card_probe,
@@ -591,25 +593,11 @@ static struct platform_driver asoc_botic_card_driver = {
     .resume = asoc_botic_card_resume,
     .driver = {
         .name = "asoc-botic-card",
-        .owner = THIS_MODULE,
         .of_match_table = of_match_ptr(asoc_botic_card_dt_ids),
     },
 };
 
-static int __init botic_card_init(void)
-{
-    platform_driver_register(&asoc_botic_card_driver);
-
-    return 0;
-}
-
-static void __exit botic_card_exit(void)
-{
-    platform_driver_unregister(&asoc_botic_card_driver);
-}
-
-module_init(botic_card_init);
-module_exit(botic_card_exit);
+module_platform_driver(asoc_botic_card_driver);
 
 module_param(pinconfig, charp, 0444);
 MODULE_PARM_DESC(pinconfig, "selected pin configuration");
