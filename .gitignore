@@ -4,3 +4,6 @@
 *.mod.c
 Module.symvers
 modules.order
+# these are linked from kernel source
+*.dtsi
+*.dtb

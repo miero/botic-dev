@@ -3,6 +3,7 @@ ifneq ($(KERNELRELEASE),)
 # kbuild part of makefile
 obj-m += davinci/
 obj-m += generic/
+subdir-y += arch/arm/boot/dts
 
 else
 
@@ -22,10 +23,12 @@ clean:
 # Module specific targets
 unload:
 	modprobe -r snd_soc_botic
+	modprobe -r snd_soc_botic_codec
 	modprobe -r snd_soc_davinci_mcasp
 
 load:
 	modprobe snd_soc_davinci_mcasp
+	modprobe snd_soc_botic_codec
 	modprobe snd_soc_botic
 
 config:
@@ -40,5 +43,19 @@ config:
 reload: build install unload load config
 	@echo Reloaded.
 	@dmesg | tail -10
+
+reload-dtb: build
+	kexec -l --command-line="`cat /proc/cmdline`" --dtb="arch/arm/boot/dts/am335x-boneblack-botic.dtb" /boot/vmlinuz-`uname -r`
+	sync
+	kexec -e -x
+
+prepare: relink scripts
+
+relink:
+	find arch/arm/boot/dts -type l -print0 | xargs -0r rm
+	find "$(KDIR)/arch/arm/boot/dts" -maxdepth 1 -name "*.dtsi" -print0 | xargs -0r ln -s -t arch/arm/boot/dts
+
+scripts:
+	$(MAKE) -C $(KDIR) scripts
 
 endif
