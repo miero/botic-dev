@@ -39,6 +39,11 @@
 };
 
 / {
+	botic_codec: botic_codec {
+		compatible = "botic-audio-codec";
+		status = "okay";
+	};
+
 	botic {
 		compatible = "botic-audio-card";
 		status = "okay";
@@ -49,6 +54,8 @@
 		pinctrl-2 = <&botic_cape_common_pins &botic_cape_compat_pins>;
 
 		audio-port = <&mcasp0>;
+		audio-codec = <&botic_codec>;
+		audio-codec-dai = "dac-hifi";
 
 		int-masterclk-enable = <&gpio1 27 0>;
 		ext-masterclk-switch = <&gpio0 15 0>;

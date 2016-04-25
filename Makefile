@@ -44,9 +44,13 @@ reload: build install unload load config
 	@echo Reloaded.
 	@dmesg | tail -10
 
+# Notice: this often fails if Ethernet cable is plugged into BBB during reboot
 reload-dtb: build
-	kexec -l --command-line="`cat /proc/cmdline`" --dtb="arch/arm/boot/dts/am335x-boneblack-botic.dtb" /boot/vmlinuz-`uname -r`
-	sync
+	kexec -l --command-line="`cat /proc/cmdline | sed s/quiet//`" --dtb="arch/arm/boot/dts/am335x-boneblack-botic.dtb" /boot/vmlinuz-`uname -r`
+	@sync
+	@echo "Remove Ethernet cable..."
+	sleep 10
+	@echo "Restarting..."
 	kexec -e -x
 
 prepare: relink scripts

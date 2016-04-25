@@ -52,110 +52,6 @@ static int clk_44k1 = 22579200;
 static int clk_48k = 24576000;
 static int blr_ratio = 64;
 
-/* provide codec with botic driver */
-#define ENABLE_BOTIC_CODEC
-
-#ifdef ENABLE_BOTIC_CODEC
-
-#define BOTIC_CODEC_NAME "botic-codec"
-#define BOTIC_CODEC_DAI_NAME "dac-hifi"
-
-static struct platform_device *botic_codec_platdev;
-
-static struct device_driver botic_codec_devdrv = {
-    .name = "botic-codec-devdrv",
-};
-
-#define BOTIC_RATES (\
-            SNDRV_PCM_RATE_CONTINUOUS | \
-            SNDRV_PCM_RATE_11025 | \
-            SNDRV_PCM_RATE_22050 | \
-            SNDRV_PCM_RATE_44100 | \
-            SNDRV_PCM_RATE_88200 | \
-            SNDRV_PCM_RATE_176400 | \
-            SNDRV_PCM_RATE_352800 | \
-            SNDRV_PCM_RATE_705600 | \
-            SNDRV_PCM_RATE_16000 | \
-            SNDRV_PCM_RATE_32000 | \
-            SNDRV_PCM_RATE_48000 | \
-            SNDRV_PCM_RATE_96000 | \
-            SNDRV_PCM_RATE_192000 | \
-            SNDRV_PCM_RATE_384000 | \
-            SNDRV_PCM_RATE_768000 | \
-            0)
-
-#define BOTIC_FORMATS (\
-            SNDRV_PCM_FMTBIT_S16_LE | \
-            SNDRV_PCM_FMTBIT_S16_BE | \
-            SNDRV_PCM_FMTBIT_S24_3LE | \
-            SNDRV_PCM_FMTBIT_S24_3BE | \
-            SNDRV_PCM_FMTBIT_S24_LE | \
-            SNDRV_PCM_FMTBIT_S24_BE | \
-            SNDRV_PCM_FMTBIT_S32_LE | \
-            SNDRV_PCM_FMTBIT_S32_BE | \
-            SNDRV_PCM_FMTBIT_DSD_U8 | \
-            SNDRV_PCM_FMTBIT_DSD_U16_LE | \
-            SNDRV_PCM_FMTBIT_DSD_U16_BE | \
-            SNDRV_PCM_FMTBIT_DSD_U32_LE | \
-            SNDRV_PCM_FMTBIT_DSD_U32_BE | \
-            0)
-
-static struct snd_soc_dai_driver botic_dac_dai = {
-    .name = BOTIC_CODEC_DAI_NAME,
-    .playback = {
-        .channels_min = 2,
-        .channels_max = 8,
-        .rate_min = 11025,
-        .rate_max = 768000,
-        .rates = BOTIC_RATES,
-        .formats = BOTIC_FORMATS,
-    },
-    .capture = {
-        .channels_min = 2,
-        .channels_max = 8,
-        .rate_min = 11025,
-        .rate_max = 768000,
-        .rates = BOTIC_RATES,
-        .formats = BOTIC_FORMATS,
-    },
-};
-
-static const struct snd_kcontrol_new botic_codec_controls[] = {
-    SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 1),
-    SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
-};
-
-static int botic_codec_probe(struct snd_soc_codec *codec)
-{
-    return 0;
-}
-
-static unsigned int botic_codec_read(struct snd_soc_codec *codec,
-        unsigned int reg)
-{
-    /* TODO */
-    return 0;
-}
-
-static int botic_codec_write(struct snd_soc_codec *codec,
-        unsigned int reg, unsigned int val)
-{
-    /* TODO */
-    return 0;
-}
-
-static struct snd_soc_codec_driver botic_codec_socdrv = {
-    .probe = botic_codec_probe,
-    .read = botic_codec_read,
-    .write = botic_codec_write,
-    .controls = botic_codec_controls,
-    .num_controls = ARRAY_SIZE(botic_codec_controls),
-};
-
-static int botic_codec_socdrv_registered;
-
-#endif
-
 static int is_dsd(snd_pcm_format_t format)
 {
     switch (format) {
@@ -453,25 +349,12 @@ static int get_optional_gpio(int *optional_gpio, struct platform_device *pdev,
     return 0;
 }
 
-#if defined(CONFIG_OF)
-
 static int asoc_botic_card_probe(struct platform_device *pdev)
 {
     struct device_node *np = pdev->dev.of_node;
     struct pinctrl *pctl;
     struct pinctrl_state *pctl_state;
     int ret;
-
-#ifdef ENABLE_BOTIC_CODEC
-    botic_codec_platdev = platform_device_register_simple(BOTIC_CODEC_NAME,
-                                                          PLATFORM_DEVID_NONE,
-                                                          NULL, 0);
-    if (IS_ERR(botic_codec_platdev))
-        return PTR_ERR(botic_codec_platdev);
-
-    /* needed by snd_soc_register_codec() ? */
-    botic_codec_platdev->dev.driver = &botic_codec_devdrv;
-#endif
 
     /* load selected pinconfig */
     pctl = devm_pinctrl_get(&pdev->dev);
@@ -560,19 +443,8 @@ static int asoc_botic_card_probe(struct platform_device *pdev)
             goto asoc_botic_card_probe_error;
         }
     } else {
-#ifdef ENABLE_BOTIC_CODEC
-        ret = snd_soc_register_codec(&botic_codec_platdev->dev,
-                &botic_codec_socdrv, &botic_dac_dai, 1);
-        if (ret < 0) {
-            goto asoc_botic_card_probe_error;
-        }
-        botic_dai.codec_name = BOTIC_CODEC_NAME;
-        botic_dai.codec_dai_name = BOTIC_CODEC_DAI_NAME;
-        botic_codec_socdrv_registered = 1;
-#else
         ret = -ENOENT;
         goto asoc_botic_card_probe_error;
-#endif
     }
 
     botic_dai.cpu_of_node = of_parse_phandle(np, "audio-port", 0);
@@ -626,12 +498,6 @@ static int asoc_botic_card_probe(struct platform_device *pdev)
 
 asoc_botic_card_probe_error:
     if (ret != 0) {
-#ifdef ENABLE_BOTIC_CODEC
-        if (botic_codec_socdrv_registered) {
-            snd_soc_unregister_codec(&botic_codec_platdev->dev);
-            botic_codec_socdrv_registered = 0;
-        }
-#endif
         if (gpio_int_masterclk_enable >= 0) {
             gpio_free(gpio_int_masterclk_enable);
         }
@@ -644,11 +510,6 @@ asoc_botic_card_probe_error:
         if (gpio_dsd_format_switch >= 0) {
             gpio_free(gpio_dsd_format_switch);
         }
-
-#ifdef ENABLE_BOTIC_CODEC
-        botic_codec_platdev->dev.driver = NULL;
-        platform_device_unregister(botic_codec_platdev);
-#endif
     }
 
     return ret;
@@ -659,15 +520,6 @@ static int asoc_botic_card_remove(struct platform_device *pdev)
     struct snd_soc_card *card = platform_get_drvdata(pdev);
 
     snd_soc_unregister_card(card);
-
-#ifdef ENABLE_BOTIC_CODEC
-    if (botic_codec_socdrv_registered) {
-        snd_soc_unregister_codec(&botic_codec_platdev->dev);
-        botic_codec_socdrv_registered = 0;
-    }
-    botic_codec_platdev->dev.driver = NULL;
-    platform_device_unregister(botic_codec_platdev);
-#endif
 
     if (gpio_int_masterclk_enable >= 0) {
         /* switch the oscillator off first */
@@ -743,22 +595,21 @@ static struct platform_driver asoc_botic_card_driver = {
         .of_match_table = of_match_ptr(asoc_botic_card_dt_ids),
     },
 };
-#endif
 
-static int __init botic_init(void)
+static int __init botic_card_init(void)
 {
     platform_driver_register(&asoc_botic_card_driver);
 
     return 0;
 }
 
-static void __exit botic_exit(void)
+static void __exit botic_card_exit(void)
 {
     platform_driver_unregister(&asoc_botic_card_driver);
 }
 
-module_init(botic_init);
-module_exit(botic_exit);
+module_init(botic_card_init);
+module_exit(botic_card_exit);
 
 module_param(pinconfig, charp, 0444);
 MODULE_PARM_DESC(pinconfig, "selected pin configuration");
