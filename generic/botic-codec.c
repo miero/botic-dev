@@ -30,7 +30,13 @@
 #define BOTIC_CODEC_NAME "botic-codec"
 #define BOTIC_CODEC_DAI_NAME "dac-hifi"
 
-static struct platform_device *botic_codec_platdev;
+struct botic_codec_data {
+    struct i2c_adapter *i2c_adapter;
+    struct i2c_client *i2c_client1;
+    struct i2c_client *i2c_client2;
+    struct regmap *client1;
+    struct regmap *client2;
+};
 
 #define BOTIC_RATES (\
             SNDRV_PCM_RATE_CONTINUOUS | \
@@ -87,31 +93,138 @@ static struct snd_soc_dai_driver botic_dac_dai = {
 };
 
 static const struct snd_kcontrol_new botic_codec_controls[] = {
-    SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 1),
+    SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 0),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
 };
 
+static const struct regmap_config empty_regmap_config;
+
 static int botic_codec_probe(struct snd_soc_codec *codec)
 {
+    struct botic_codec_data *codec_data = snd_soc_codec_get_drvdata(codec);
+    struct regmap_config config;
+
+    if (codec_data->i2c_adapter == NULL)
+        return 0;
+
+    codec_data->i2c_client1 = i2c_new_dummy(codec_data->i2c_adapter, 0x48);
+    if (codec_data->i2c_client1 == NULL)
+        return -EBUSY;
+
+    codec_data->i2c_client2 = i2c_new_dummy(codec_data->i2c_adapter, 0x49);
+    if (codec_data->i2c_client1 == NULL) {
+        i2c_unregister_device(codec_data->i2c_client1);
+        return -EBUSY;
+    }
+
+    /* ES9018 DAC */
+    config = empty_regmap_config;
+    config.val_bits = 8;
+    config.reg_bits = 8;
+    config.max_register = 72;
+
+    codec_data->client1 =
+        devm_regmap_init_i2c(codec_data->i2c_client1, &config);
+
+    codec_data->client2 =
+        devm_regmap_init_i2c(codec_data->i2c_client2, &config);
+
+    if (0) {
+        int i;
+        int r;
+        unsigned int v;
+        for (i=0;i<72;i++) {
+            r = regmap_read(codec_data->client1, i, &v);
+            printk(" %c%02x", (r == 0 ? ' ' : '*'), v);
+            if (i % 8 == 7) printk("\n");
+        }
+    }
+
+
+    return 0;
+}
+
+static int botic_codec_remove(struct snd_soc_codec *codec)
+{
+    struct botic_codec_data *codec_data = snd_soc_codec_get_drvdata(codec);
+
+    if (codec_data->i2c_client1 != NULL)
+        i2c_unregister_device(codec_data->i2c_client1);
+
+    if (codec_data->i2c_client2 != NULL)
+        i2c_unregister_device(codec_data->i2c_client2);
+
     return 0;
 }
 
 static unsigned int botic_codec_read(struct snd_soc_codec *codec,
         unsigned int reg)
 {
-    /* TODO */
-    return 0;
+    struct botic_codec_data *codec_data = snd_soc_codec_get_drvdata(codec);
+    unsigned int v = 0;
+    unsigned int t;
+    int r = 0;
+
+    switch(reg) {
+    case 0: /* Master Volume */
+        r = regmap_read(codec_data->client1, 23, &t);
+        v = t & 0x7f;
+        v <<= 8;
+        r |= regmap_read(codec_data->client1, 22, &t);
+        v |= t;
+        v <<= 8;
+        r |= regmap_read(codec_data->client1, 21, &t);
+        v |= t;
+        v <<= 8;
+        r |= regmap_read(codec_data->client1, 20, &t);
+        v |= t;
+        /* convert 0--0x7fffffff to 0-30 */
+        t = v + 1;
+        v = 0;
+        while (t > 0) {
+            v++;
+            t &= ~1U;
+            t >>= 1;
+        }
+        v--;
+        break;
+    }
+
+    if (!r)
+        return v;
+    else
+        return 0;
 }
 
 static int botic_codec_write(struct snd_soc_codec *codec,
         unsigned int reg, unsigned int val)
 {
-    /* TODO */
-    return 0;
+    struct botic_codec_data *codec_data = snd_soc_codec_get_drvdata(codec);
+    unsigned int t;
+    int r = 0;
+
+    switch(reg) {
+    case 0: /* Master Volume */
+        t = (1U << val) - 1;
+        r = regmap_write(codec_data->client1, 20, t & 0xff);
+        t >>= 8;
+        r |= regmap_write(codec_data->client1, 21, t & 0xff);
+        t >>= 8;
+        r |= regmap_write(codec_data->client1, 22, t & 0xff);
+        t >>= 8;
+        r |= regmap_write(codec_data->client1, 23, t);
+        break;
+    }
+
+    if (!r)
+        return 0;
+    else
+        return -EIO;
 }
 
 static struct snd_soc_codec_driver botic_codec_socdrv = {
     .probe = botic_codec_probe,
+    .remove = botic_codec_remove,
     .read = botic_codec_read,
     .write = botic_codec_write,
     .controls = botic_codec_controls,
@@ -120,13 +233,48 @@ static struct snd_soc_codec_driver botic_codec_socdrv = {
 
 static int asoc_botic_codec_probe(struct platform_device *pdev)
 {
-    return snd_soc_register_codec(&pdev->dev,
+    struct device_node *node = pdev->dev.of_node;
+    struct device_node *adapter_node;
+    struct botic_codec_data *codec_data;
+    int ret;
+
+    if (!pdev->dev.of_node) {
+        dev_err(&pdev->dev, "No device tree data\n");
+        return -ENODEV;
+    }
+
+    codec_data = devm_kzalloc(&pdev->dev, sizeof(struct botic_codec_data),
+            GFP_KERNEL);
+
+    adapter_node = of_parse_phandle(node, "i2c-bus", 0);
+    if (adapter_node) {
+        codec_data->i2c_adapter = of_get_i2c_adapter_by_node(adapter_node);
+        if (codec_data->i2c_adapter == NULL) {
+            dev_err(&pdev->dev, "failed to parse i2c-bus\n");
+            return -EPROBE_DEFER;
+        }
+    }
+
+    dev_set_drvdata(&pdev->dev, codec_data);
+
+    ret = snd_soc_register_codec(&pdev->dev,
             &botic_codec_socdrv, &botic_dac_dai, 1);
+
+    if (ret != 0) {
+        i2c_put_adapter(codec_data->i2c_adapter);
+    }
+
+    return ret;
 }
 
 static int asoc_botic_codec_remove(struct platform_device *pdev)
 {
-    snd_soc_unregister_codec(&botic_codec_platdev->dev);
+    struct botic_codec_data *codec_data = platform_get_drvdata(pdev);
+
+    snd_soc_unregister_codec(&pdev->dev);
+
+    i2c_put_adapter(codec_data->i2c_adapter);
+
     return 0;
 }
 

@@ -42,6 +42,7 @@
 	botic_codec: botic_codec {
 		compatible = "botic-audio-codec";
 		status = "okay";
+		i2c-bus = <&i2c1>; /* Isolated I2C bus on Hermes-BBB. */
 	};
 
 	botic {
