@@ -91,9 +91,16 @@ static struct snd_soc_dai_driver botic_codec_dai = {
     .ops = &botic_codec_dai_ops,
 };
 
+static const char *spdif_input_text[] = {
+    "1", "2", "3", "4", "5", "6", "7", "8"
+};
+
+static SOC_ENUM_SINGLE_DECL(spdif_input, 2, 0, spdif_input_text);
+
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 0),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
+    SOC_ENUM("SPDIF Source", spdif_input),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -213,6 +220,16 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
     case 1: /* Master Volume Mute */
         v = codec_data->force_mute;
         break;
+    case 2: /* SPDIF Source */
+        v = 0;
+        r = regmap_read(codec_data->client1, 18, &t);
+        while (t > 0) {
+            v++;
+            t &= ~1U;
+            t >>= 1;
+        }
+        v--;
+        break;
     }
 
     if (!r)
@@ -250,12 +267,17 @@ static int botic_codec_write(struct snd_soc_codec *codec,
             ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
         }
         break;
+    case 2: /* SPDIF Source */
+        ret = regmap_write(codec_data->client1, 18, 1U << val);
+        break;
     }
 
     if (!ret)
         return 0;
-    else
+    else {
+        dev_warn(codec->dev, "unable to configure Codec via I2C; e=%d\n", ret);
         return -EIO;
+    }
 }
 
 static struct snd_soc_codec_driver botic_codec_socdrv = {
@@ -279,9 +301,13 @@ static int botic_codec_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
     switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
     case SND_SOC_DAIFMT_DIT:
         ret = regmap_update_bits(codec_data->client1, 8, 0x80, 0x80);
+        if (!ret)
+            ret = regmap_update_bits(codec_data->client1, 17, 0x08, 0x08);
         break;
     default:
         ret = regmap_update_bits(codec_data->client1, 8, 0x80, 0x00);
+        if (!ret)
+            ret = regmap_update_bits(codec_data->client1, 17, 0x08, 0x00);
         break;
     }
 
@@ -325,6 +351,15 @@ static int botic_codec_mute_stream(struct snd_soc_dai *dai, int mute, int stream
         ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
     } else if (!codec_data->force_mute) {
         ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
+    }
+
+    if (mute) {
+        /* Force SPDIF if not playing. */
+        ret = regmap_update_bits(codec_data->client1, 8, 0x80, 0x80);
+        /* Re-enable SPDIF autodetect after the stop of playback. */
+        if (!ret)
+            ret = regmap_update_bits(codec_data->client1, 17, 0x08, 0x08);
+        /* TODO: other parameters, e.g. DPLL */
     }
 
     return ret;
