@@ -97,10 +97,35 @@ static const char *spdif_input_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(spdif_input, 2, 0, spdif_input_text);
 
+static const char *bypass_or_use_text[] = {
+    "Bypass", "Use"
+};
+
+static const char *deemphasis_filter_text[] = {
+    "Bypass", "32kHz", "44.1kHz", "48kHz"
+};
+
+static SOC_ENUM_SINGLE_DECL(jitter_reduction, 3, 0, bypass_or_use_text);
+static SOC_ENUM_SINGLE_DECL(deemphasis_filter, 4, 0, deemphasis_filter_text);
+
+static const char *dpll_text[] = {
+    "1x Auto",
+    "128x Auto",
+    "No",
+    /* Notice: these values are just a guess from the datasheet info */
+    "1x", "2x", "4x", "8x", "16x", "32x", "64x",
+    "128x", "256x", "512x", "1024x", "2048x", "4096x", "8192x",
+};
+
+static SOC_ENUM_SINGLE_DECL(dpll, 5, 0, dpll_text);
+
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 0),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
     SOC_ENUM("SPDIF Source", spdif_input),
+    SOC_ENUM("Jitter Reduction", jitter_reduction),
+    SOC_ENUM("De-emphasis Filter", deemphasis_filter),
+    SOC_ENUM("DPLL", dpll),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -188,7 +213,7 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
 {
     struct botic_codec_data *codec_data = snd_soc_codec_get_drvdata(codec);
     unsigned int v = 0;
-    unsigned int t;
+    unsigned int t, t2;
     int r = 0;
 
     if (codec_data->client1 == NULL)
@@ -230,6 +255,37 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
         }
         v--;
         break;
+    case 3: /* Jitter reduction */
+        r = regmap_read(codec_data->client1, 10, &t);
+        v = !!(t & 0x04);
+        break;
+    case 4: /* De-emphasis filter */
+        r = regmap_read(codec_data->client1, 10, &t);
+        v = !(t & 0x02);
+        if (!r && v) {
+            r = regmap_read(codec_data->client1, 11, &t);
+            v = (t & 0x3) + 1;
+            if (v > 3) {
+                /* skip reserved value */
+                v = 0;
+            }
+        }
+        break;
+    case 5: /* DPLL */
+        r = regmap_read(codec_data->client1, 25, &t);
+        if (!r) {
+            if (t & 0x02) {
+                /* Auto */
+                v = t & 0x01;
+            } else {
+                r = regmap_read(codec_data->client1, 11, &t2);
+                v = (t2 & 0x1c) >> 2;
+                if ((v > 0) && !!(t & 0x01))
+                    v += 7;
+                v += 2;
+            }
+        }
+        break;
     }
 
     if (!r)
@@ -261,14 +317,43 @@ static int botic_codec_write(struct snd_soc_codec *codec,
         break;
     case 1: /* Master Volume Mute */
         codec_data->force_mute = val;
-        if (codec_data->force_mute) {
+        if (codec_data->force_mute)
             ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
-        } else if (!codec_data->stream_muted) {
+        else if (!codec_data->stream_muted)
             ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
-        }
         break;
     case 2: /* SPDIF Source */
         ret = regmap_write(codec_data->client1, 18, 1U << val);
+        break;
+    case 3: /* Jitter reduction */
+        ret = regmap_update_bits(codec_data->client1, 10, 0x04, 0x04 * val);
+        break;
+    case 4: /* De-emphasis filter */
+        ret = 0;
+        if (val > 0)
+            ret = regmap_update_bits(codec_data->client1, 11, 0x03, val - 1);
+        if (!ret)
+            ret = regmap_update_bits(codec_data->client1, 10, 0x02, (!val) << 1);
+        break;
+    case 5: /* DPLL */
+        if (val < 2) {
+            /* Auto */
+            ret = regmap_update_bits(codec_data->client1, 11, 0x1c, 0);
+            if (!ret)
+                ret = regmap_update_bits(codec_data->client1, 25, 0x03, 2 + val);
+        } else {
+            val -= 2;
+            if (val <= 7) {
+                ret = regmap_update_bits(codec_data->client1, 11, 0x1c, val << 2);
+                val = 0;
+            } else {
+                val -= 7;
+                ret = regmap_update_bits(codec_data->client1, 11, 0x1c, val << 2);
+                val = 1;
+            }
+            if (!ret)
+                ret = regmap_update_bits(codec_data->client1, 25, 0x03, val);
+        }
         break;
     }
 
