@@ -119,6 +119,42 @@ static const char *dpll_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(dpll, 5, 0, dpll_text);
 
+static const char *iir_bw_text[] = {
+    "Normal", "50k", "60k", "70k"
+};
+
+static SOC_ENUM_SINGLE_DECL(iir_bw, 6, 0, iir_bw_text);
+
+static const char *fir_rolloff_text[] = {
+    "Slow", "Fast"
+};
+
+static SOC_ENUM_SINGLE_DECL(fir_rolloff, 7, 0, fir_rolloff_text);
+
+static const char *true_mono_text[] = {
+    "Left", "Off", "Right"
+};
+
+static SOC_ENUM_SINGLE_DECL(true_mono, 8, 0, true_mono_text);
+
+static const char *dpll_phase_text[] = {
+    "Normal", "Flip"
+};
+
+static SOC_ENUM_SINGLE_DECL(dpll_phase, 9, 0, dpll_phase_text);
+
+static const char *os_filter_text[] = {
+    "Use", "Bypass"
+};
+
+static SOC_ENUM_SINGLE_DECL(os_filter, 10, 0, os_filter_text);
+
+static const char *dpll_relock_text[] = {
+    "Normal", "Force"
+};
+
+static SOC_ENUM_SINGLE_DECL(dpll_relock, 11, 0, dpll_relock_text);
+
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 0),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
@@ -126,6 +162,12 @@ static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_ENUM("Jitter Reduction", jitter_reduction),
     SOC_ENUM("De-emphasis Filter", deemphasis_filter),
     SOC_ENUM("DPLL", dpll),
+    SOC_ENUM("IIR Bandwidth", iir_bw),
+    SOC_ENUM("FIR Rolloff", fir_rolloff),
+    SOC_ENUM("True Mono", true_mono),
+    SOC_ENUM("DPLL Phase", dpll_phase),
+    SOC_ENUM("Oversampling Filter", os_filter),
+    SOC_ENUM("DPLL Force", dpll_relock),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -286,6 +328,35 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
             }
         }
         break;
+    case 6: /* IIR Bandwidth */
+        r = regmap_read(codec_data->client1, 14, &t);
+        v = (t & 0x06) >> 1;
+        break;
+    case 7: /* FIR Rolloff */
+        r = regmap_read(codec_data->client1, 14, &t);
+        v = t & 0x01;
+        break;
+    case 8: /* True Mono */
+        r = regmap_read(codec_data->client1, 17, &t);
+        if (!r) {
+            if (t & 0x01)
+                v = 2 * !!(t & 0x80);
+            else
+                v = 1;
+        }
+        break;
+    case 9: /* DPLL Phase */
+        r = regmap_read(codec_data->client1, 17, &t);
+        v = !!(t & 0x02);
+        break;
+    case 10: /* Oversampling Filter */
+        r = regmap_read(codec_data->client1, 17, &t);
+        v = !!(t & 0x40);
+        break;
+    case 11: /* DPLL Lock Override */
+        r = regmap_read(codec_data->client1, 17, &t);
+        v = !!(t & 0x20);
+        break;
     }
 
     if (!r)
@@ -354,6 +425,28 @@ static int botic_codec_write(struct snd_soc_codec *codec,
             if (!ret)
                 ret = regmap_update_bits(codec_data->client1, 25, 0x03, val);
         }
+        break;
+    case 6: /* IIR Bandwidth */
+        ret = regmap_update_bits(codec_data->client1, 14, 0x06, val << 1);
+        break;
+    case 7: /* FIR Rolloff */
+        ret = regmap_update_bits(codec_data->client1, 14, 0x01, val);
+        break;
+    case 8: /* True Mono */
+        if (val == 1)
+            ret = regmap_update_bits(codec_data->client1, 17, 0x81, 0);
+        else
+            ret = regmap_update_bits(codec_data->client1, 17, 0x81,
+                    (0x80 * !!val) + 1);
+        break;
+    case 9: /* DPLL Phase */
+        ret = regmap_update_bits(codec_data->client1, 17, 0x02, 0x02 * !!val);
+        break;
+    case 10: /* Oversampling Filter */
+        ret = regmap_update_bits(codec_data->client1, 17, 0x40, 0x40 * !!val);
+        break;
+    case 11: /* DPLL Lock Override */
+        ret = regmap_update_bits(codec_data->client1, 17, 0x20, 0x20 * !!val);
         break;
     }
 
