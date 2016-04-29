@@ -38,6 +38,7 @@ struct botic_codec_data {
     struct regmap *client2;
     int stream_muted;
     int force_mute;
+    int last_clock_48k;
 };
 
 #define BOTIC_RATES (\
@@ -149,12 +150,6 @@ static const char *os_filter_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(os_filter, 10, 0, os_filter_text);
 
-static const char *dpll_relock_text[] = {
-    "Normal", "Force"
-};
-
-static SOC_ENUM_SINGLE_DECL(dpll_relock, 11, 0, dpll_relock_text);
-
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 0),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
@@ -167,7 +162,6 @@ static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_ENUM("True Mono", true_mono),
     SOC_ENUM("DPLL Phase", dpll_phase),
     SOC_ENUM("Oversampling Filter", os_filter),
-    SOC_ENUM("DPLL Force", dpll_relock),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -221,6 +215,7 @@ static int botic_codec_probe(struct snd_soc_codec *codec)
     /* Initialize codec params. */
     codec_data->force_mute = 0;
     codec_data->stream_muted = 1;
+    codec_data->last_clock_48k = -1; /* force relock on the first use */
 
     if (0) {
         int i;
@@ -353,10 +348,6 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
         r = regmap_read(codec_data->client1, 17, &t);
         v = !!(t & 0x40);
         break;
-    case 11: /* DPLL Lock Override */
-        r = regmap_read(codec_data->client1, 17, &t);
-        v = !!(t & 0x20);
-        break;
     }
 
     if (!r)
@@ -444,9 +435,6 @@ static int botic_codec_write(struct snd_soc_codec *codec,
         break;
     case 10: /* Oversampling Filter */
         ret = regmap_update_bits(codec_data->client1, 17, 0x40, 0x40 * !!val);
-        break;
-    case 11: /* DPLL Lock Override */
-        ret = regmap_update_bits(codec_data->client1, 17, 0x20, 0x20 * !!val);
         break;
     }
 
@@ -548,10 +536,22 @@ static int botic_codec_hw_params(struct snd_pcm_substream *substream,
 {
     struct snd_soc_codec *codec = dai->codec;
     struct botic_codec_data *codec_data = snd_soc_codec_get_drvdata(codec);
+    unsigned int rate = params_rate(params);
+    int clock_48k;
     int ret;
 
     if (codec_data->client1 == NULL)
         return 0;
+
+    clock_48k = (rate % 12000 == 0);
+    if (clock_48k != codec_data->last_clock_48k) {
+        codec_data->last_clock_48k = clock_48k;
+        /* Force DPLL lock reset. */
+        (void)regmap_update_bits(codec_data->client1, 17, 0x20, 0x20);
+        ret = regmap_update_bits(codec_data->client1, 17, 0x20, 0x00);
+        if (ret)
+            return ret;
+    }
 
     switch (params_format(params)) {
     case SNDRV_PCM_FORMAT_S16_LE:
