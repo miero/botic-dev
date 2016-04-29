@@ -92,6 +92,33 @@ static struct snd_soc_dai_driver botic_codec_dai = {
     .ops = &botic_codec_dai_ops,
 };
 
+#define VOLUME_MAXATTEN 199
+#define VOLUME_HALFSTEPS 16
+
+/*
+ * VOLUME_HALFSTEPS+1 steps of the half volume
+ * ~0.38dB change per step for 16 halfsteps
+ */
+static const unsigned int volume_steps[] = {
+    0x7fffffff,
+    0x7a92be89,
+    0x75606373,
+    0x70666f75,
+    0x6ba27e64,
+    0x67124609,
+    0x62b39507,
+    0x5e8451ce,
+    0x5a827999,
+    0x56ac1f74,
+    0x52ff6b54,
+    0x4f7a992f,
+    0x4c1bf828,
+    0x48e1e9b9,
+    0x45cae0f1,
+    0x42d561b3,
+    0x3fffffff,
+};
+
 static const char *spdif_input_text[] = {
     "1", "2", "3", "4", "5", "6", "7", "8"
 };
@@ -151,7 +178,7 @@ static const char *os_filter_text[] = {
 static SOC_ENUM_SINGLE_DECL(os_filter, 10, 0, os_filter_text);
 
 static const struct snd_kcontrol_new botic_codec_controls[] = {
-    SOC_DOUBLE("Master Playback Volume", 0, 0, 0, 31, 0),
+    SOC_DOUBLE("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
     SOC_ENUM("SPDIF Source", spdif_input),
     SOC_ENUM("Jitter Reduction", jitter_reduction),
@@ -269,15 +296,23 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
         v <<= 8;
         r |= regmap_read(codec_data->client1, 20, &t);
         v |= t;
-        /* convert 0--0x7fffffff to 0-30 */
-        t = v + 1;
-        v = 0;
-        while (t > 0) {
-            v++;
-            t &= ~1U;
-            t >>= 1;
-        }
-        v--;
+        /* convert 0x7fffffff--0 to 0-VOLUME_MAXATTEN */
+        t = v;
+        if (t != 0) {
+            v = 0;
+            while (t <= volume_steps[VOLUME_HALFSTEPS]) {
+                t <<= 1;
+                v += VOLUME_HALFSTEPS;
+            }
+            for (t2 = 1; t2 < VOLUME_HALFSTEPS; t2++) {
+                if (t > volume_steps[t2])
+                    break;
+                v++;
+            }
+            if (v > VOLUME_MAXATTEN)
+                v = VOLUME_MAXATTEN;
+        } else
+            v = VOLUME_MAXATTEN;
         break;
     case 1: /* Master Volume Mute */
         v = codec_data->force_mute;
@@ -368,7 +403,11 @@ static int botic_codec_write(struct snd_soc_codec *codec,
 
     switch(reg) {
     case 0: /* Master Volume */
-        t = (1U << val) - 1;
+        if (val < VOLUME_MAXATTEN)
+            t = volume_steps[val % VOLUME_HALFSTEPS] >>
+                (val / VOLUME_HALFSTEPS);
+        else
+            t = 0;
         ret = regmap_write(codec_data->client1, 20, t & 0xff);
         t >>= 8;
         ret |= regmap_write(codec_data->client1, 21, t & 0xff);
