@@ -184,6 +184,15 @@ static const char *mute_mode_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(mute_mode, 11, 0, mute_mode_text);
 
+static const char *remap_inputs_text[] = {
+    "12345678", "12345676", "12345658", "12345656",
+    "12325678", "12325676", "12325658", "12325656",
+    "12145678", "12145676", "12145658", "12145656",
+    "12125678", "12125676", "12125658", "12125656",
+};
+
+static SOC_ENUM_SINGLE_DECL(remap_inputs, 12, 0, remap_inputs_text);
+
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
@@ -197,6 +206,7 @@ static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_ENUM("DPLL Phase", dpll_phase),
     SOC_ENUM("Oversampling Filter", os_filter),
     SOC_ENUM("Mute Mode", mute_mode),
+    SOC_ENUM("Remap Inputs", remap_inputs),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -395,6 +405,10 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
     case 11: /* Mute Mode */
         v = codec_data->mute_mode;
         break;
+    case 12: /* Remap Inputs */
+        r = regmap_read(codec_data->client1, 14, &t);
+        v = (t & 0xf0) >> 4;
+        break;
     }
 
     if (!r)
@@ -497,6 +511,8 @@ static int botic_codec_write(struct snd_soc_codec *codec,
                 ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
         }
         break;
+    case 12: /* Remap Inputs */
+        ret = regmap_update_bits(codec_data->client1, 14, 0xf0, val << 4);
     }
 
     if (!ret)
