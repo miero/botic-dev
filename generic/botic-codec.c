@@ -199,6 +199,12 @@ static const char *mclk_notch_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(mclk_notch, 13, 0, mclk_notch_text);
 
+static const char *remap_output_text[] = {
+    "q6true", "q7pseudo", "q7true", "q8pseudo", "q8true", "q9pseudo"
+};
+
+static SOC_ENUM_SINGLE_DECL(remap_output, 14, 0, remap_output_text);
+
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
@@ -214,6 +220,7 @@ static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_ENUM("Mute Mode", mute_mode),
     SOC_ENUM("Remap Inputs", remap_inputs),
     SOC_ENUM("MCLK Notch", mclk_notch),
+    SOC_ENUM("Remap Output", remap_output),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -425,6 +432,18 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
             v++;
         }
         break;
+    case 14: /* Remap Output (Quantizer & Differential) */
+        r = regmap_read(codec_data->client1, 15, &t);
+        v = 2 * (t & 0x03);
+        if (!r) {
+            r = regmap_read(codec_data->client1, 14, &t);
+            if ((t & 0x08) == 0)
+                v--;
+        }
+        /* Notice: Hides bad configuration as "6 True". */
+        if (v < 0 || v > 5)
+            v = 0;
+        break;
     }
 
     if (!r)
@@ -533,6 +552,13 @@ static int botic_codec_write(struct snd_soc_codec *codec,
     case 13: /* MCLK Notch */
         ret = regmap_update_bits(codec_data->client1, 12, 0x1f,
                 (1U << val) - 1);
+        break;
+    case 14: /* Remap Output (Quantizer & Differential) */
+        ret = regmap_update_bits(codec_data->client1, 14, 0x08,
+                0x08 * !(val % 2));
+        if (!ret)
+            ret = regmap_update_bits(codec_data->client1, 15, 0xff,
+                    0x55 * ((val + 1) / 2));
         break;
     }
 
