@@ -193,6 +193,12 @@ static const char *remap_inputs_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(remap_inputs, 12, 0, remap_inputs_text);
 
+static const char *mclk_notch_text[] = {
+    "No Notch", "MCLK/4", "MCLK/8", "MCLK/16", "MCLK/32", "MCLK/64"
+};
+
+static SOC_ENUM_SINGLE_DECL(mclk_notch, 13, 0, mclk_notch_text);
+
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
@@ -207,6 +213,7 @@ static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_ENUM("Oversampling Filter", os_filter),
     SOC_ENUM("Mute Mode", mute_mode),
     SOC_ENUM("Remap Inputs", remap_inputs),
+    SOC_ENUM("MCLK Notch", mclk_notch),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -409,6 +416,15 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
         r = regmap_read(codec_data->client1, 14, &t);
         v = (t & 0xf0) >> 4;
         break;
+    case 13: /* MCLK Notch */
+        r = regmap_read(codec_data->client1, 12, &t);
+        t = t & 0x1f;
+        v = 0;
+        while (t > 0) {
+            t = (t & ~1U) >> 1;
+            v++;
+        }
+        break;
     }
 
     if (!r)
@@ -513,6 +529,11 @@ static int botic_codec_write(struct snd_soc_codec *codec,
         break;
     case 12: /* Remap Inputs */
         ret = regmap_update_bits(codec_data->client1, 14, 0xf0, val << 4);
+        break;
+    case 13: /* MCLK Notch */
+        ret = regmap_update_bits(codec_data->client1, 12, 0x1f,
+                (1U << val) - 1);
+        break;
     }
 
     if (!ret)
