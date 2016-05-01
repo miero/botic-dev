@@ -36,8 +36,9 @@ struct botic_codec_data {
     struct i2c_client *i2c_client2;
     struct regmap *client1;
     struct regmap *client2;
-    int stream_muted;
-    int force_mute;
+    int stream_muted; /* ALSA is not playing */
+    int force_mute; /* Master Mute control */
+    int mute_mode; /* Mute Codec if not playing? */
     int last_clock_48k;
 };
 
@@ -177,6 +178,12 @@ static const char *os_filter_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(os_filter, 10, 0, os_filter_text);
 
+static const char *mute_mode_text[] = {
+    "Never", "On Idle"
+};
+
+static SOC_ENUM_SINGLE_DECL(mute_mode, 11, 0, mute_mode_text);
+
 static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_DOUBLE("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
@@ -189,6 +196,7 @@ static const struct snd_kcontrol_new botic_codec_controls[] = {
     SOC_ENUM("True Mono", true_mono),
     SOC_ENUM("DPLL Phase", dpll_phase),
     SOC_ENUM("Oversampling Filter", os_filter),
+    SOC_ENUM("Mute Mode", mute_mode),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -242,6 +250,7 @@ static int botic_codec_probe(struct snd_soc_codec *codec)
     /* Initialize codec params. */
     codec_data->force_mute = 0;
     codec_data->stream_muted = 1;
+    codec_data->mute_mode = 1;
     codec_data->last_clock_48k = -1; /* force relock on the first use */
 
     if (0) {
@@ -383,6 +392,9 @@ static unsigned int botic_codec_read(struct snd_soc_codec *codec,
         r = regmap_read(codec_data->client1, 17, &t);
         v = !!(t & 0x40);
         break;
+    case 11: /* Mute Mode */
+        v = codec_data->mute_mode;
+        break;
     }
 
     if (!r)
@@ -475,6 +487,16 @@ static int botic_codec_write(struct snd_soc_codec *codec,
     case 10: /* Oversampling Filter */
         ret = regmap_update_bits(codec_data->client1, 17, 0x40, 0x40 * !!val);
         break;
+    case 11: /* Mute Mode */
+        codec_data->mute_mode = val;
+        if (codec_data->mute_mode != 0) {
+            if (codec_data->stream_muted)
+                ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
+        } else {
+            if (!codec_data->force_mute)
+                ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
+        }
+        break;
     }
 
     if (!ret)
@@ -552,8 +574,10 @@ static int botic_codec_mute_stream(struct snd_soc_dai *dai, int mute, int stream
         return ret;
 
     codec_data->stream_muted = mute;
+
     if (codec_data->stream_muted) {
-        ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
+        if (codec_data->mute_mode != 0)
+            ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
     } else if (!codec_data->force_mute) {
         ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
     }
