@@ -525,6 +525,9 @@ static int botic_codec_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
     if (codec_data->client1 == NULL)
         return 0;
 
+    /* Mute the DAC before adjusting the parameters. */
+    (void)regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
+
     switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
     case SND_SOC_DAIFMT_DIT:
         ret = regmap_update_bits(codec_data->client1, 8, 0x80, 0x80);
@@ -575,20 +578,24 @@ static int botic_codec_mute_stream(struct snd_soc_dai *dai, int mute, int stream
 
     codec_data->stream_muted = mute;
 
-    if (codec_data->stream_muted) {
-        if (codec_data->mute_mode != 0)
-            ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
-    } else if (!codec_data->force_mute) {
-        ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
-    }
-
     if (mute) {
-        /* Force SPDIF if not playing. */
-        ret = regmap_update_bits(codec_data->client1, 8, 0x80, 0x80);
-        /* Re-enable SPDIF autodetect after the stop of playback. */
-        if (!ret)
-            ret = regmap_update_bits(codec_data->client1, 17, 0x08, 0x08);
+        /* Reconfigure the DAC for a SPDIF playback from an external device. */
+
+        /* Mute the DAC first. */
+        (void)regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
+
+        /* Force SPDIF input. */
+        (void)regmap_update_bits(codec_data->client1, 8, 0x80, 0x80);
+        /* Re-enable SPDIF autodetect. */
+        (void)regmap_update_bits(codec_data->client1, 17, 0x08, 0x08);
         /* TODO: other parameters, e.g. DPLL */
+
+        /* Unmute the DAC after reconfiguration. */
+        if (codec_data->mute_mode == 0)
+            ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
+    } else if (!codec_data->force_mute) {
+        /* Unmute the DAC if it is not muted by user. */
+        ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
     }
 
     return ret;
