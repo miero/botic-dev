@@ -216,6 +216,7 @@ static const char *remap_output_text[] = {
 static SOC_ENUM_SINGLE_DECL(remap_output, 14, 0, remap_output_text);
 
 static const DECLARE_TLV_DB_MINMAX_MUTE(master_tlv, -6051, 0);
+static const DECLARE_TLV_DB_MINMAX(dac_tlv, -12750, 0);
 
 static const struct snd_kcontrol_new sabre32_codec_controls[] = {
     SOC_DOUBLE_TLV("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1,
@@ -234,6 +235,14 @@ static const struct snd_kcontrol_new sabre32_codec_controls[] = {
     SOC_ENUM("Remap Inputs", remap_inputs),
     SOC_ENUM("MCLK Notch", mclk_notch),
     SOC_ENUM("Remap Output", remap_output),
+    SOC_SINGLE_TLV("DAC1 Playback Volume", 20, 0, 255, 1, dac_tlv),
+    SOC_SINGLE_TLV("DAC2 Playback Volume", 21, 0, 255, 1, dac_tlv),
+    SOC_SINGLE_TLV("DAC3 Playback Volume", 22, 0, 255, 1, dac_tlv),
+    SOC_SINGLE_TLV("DAC4 Playback Volume", 23, 0, 255, 1, dac_tlv),
+    SOC_SINGLE_TLV("DAC5 Playback Volume", 24, 0, 255, 1, dac_tlv),
+    SOC_SINGLE_TLV("DAC6 Playback Volume", 25, 0, 255, 1, dac_tlv),
+    SOC_SINGLE_TLV("DAC7 Playback Volume", 26, 0, 255, 1, dac_tlv),
+    SOC_SINGLE_TLV("DAC8 Playback Volume", 27, 0, 255, 1, dac_tlv),
 };
 
 static const struct regmap_config empty_regmap_config;
@@ -457,6 +466,17 @@ static unsigned int sabre32_codec_read(struct snd_soc_codec *codec,
         if (v < 0 || v > 5)
             v = 0;
         break;
+    case 20:
+    case 21:
+    case 22:
+    case 23:
+    case 24:
+    case 25:
+    case 26:
+    case 27:
+        /* DAC1-DAC8 Volume */
+        r = regmap_read(codec_data->client1, reg - 20, &v);
+        break;
     }
 
     if (!r)
@@ -572,6 +592,17 @@ static int sabre32_codec_write(struct snd_soc_codec *codec,
         if (!ret)
             ret = regmap_update_bits(codec_data->client1, 15, 0xff,
                     0x55 * ((val + 1) / 2));
+        break;
+    case 20:
+    case 21:
+    case 22:
+    case 23:
+    case 24:
+    case 25:
+    case 26:
+    case 27:
+        /* DAC1-DAC8 Volume */
+        ret = regmap_write(codec_data->client1, reg - 20, val);
         break;
     }
 
