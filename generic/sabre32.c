@@ -18,6 +18,7 @@
 #include <sound/pcm.h>
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
+#include <sound/tlv.h>
 
 #include <asm/dma.h>
 #include <asm/mach-types.h>
@@ -98,30 +99,34 @@ static struct snd_soc_dai_driver sabre32_codec_dai = {
     .ops = &sabre32_codec_dai_ops,
 };
 
-#define VOLUME_MAXATTEN 199
-#define VOLUME_HALFSTEPS 16
+#define VOLUME_MAXATTEN 201
+#define VOLUME_HALFSTEPS 20
 
 /*
  * VOLUME_HALFSTEPS+1 steps of the half volume
- * ~0.38dB change per step for 16 halfsteps
+ * ~0.3dB change per step for 20 halfsteps
  */
 static const unsigned int volume_steps[] = {
     0x7fffffff,
-    0x7a92be89,
-    0x75606373,
-    0x70666f75,
+    0x7ba3cd36,
+    0x776da003,
+    0x735c2cd6,
+    0x6f6e336a,
     0x6ba27e64,
-    0x67124609,
-    0x62b39507,
-    0x5e8451ce,
+    0x67f7e2f2,
+    0x646d406f,
+    0x6101800e,
+    0x5db3947c,
     0x5a827999,
-    0x56ac1f74,
-    0x52ff6b54,
-    0x4f7a992f,
+    0x576d341c,
+    0x5472d14e,
+    0x519266bc,
+    0x4ecb11ef,
     0x4c1bf828,
-    0x48e1e9b9,
-    0x45cae0f1,
-    0x42d561b3,
+    0x4984461a,
+    0x47032fac,
+    0x4497efb8,
+    0x4241c7cf,
     0x3fffffff,
 };
 
@@ -210,8 +215,11 @@ static const char *remap_output_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(remap_output, 14, 0, remap_output_text);
 
+static const DECLARE_TLV_DB_MINMAX_MUTE(master_tlv, -6051, 0);
+
 static const struct snd_kcontrol_new sabre32_codec_controls[] = {
-    SOC_DOUBLE("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1),
+    SOC_DOUBLE_TLV("Master Playback Volume", 0, 0, 0, VOLUME_MAXATTEN, 1,
+            master_tlv),
     SOC_SINGLE("Master Playback Switch", 1, 0, 1, 1),
     SOC_ENUM("SPDIF Source", spdif_input),
     SOC_ENUM("Jitter Reduction", jitter_reduction),

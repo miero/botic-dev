@@ -23,12 +23,14 @@ clean:
 # Module specific targets
 unload:
 	modprobe -r snd_soc_botic
-	modprobe -r snd_soc_botic_codec
+	#modprobe -r snd_soc_botic_codec
+	modprobe -r snd_soc_sabre32
 	modprobe -r snd_soc_davinci_mcasp
 
 load:
 	modprobe snd_soc_davinci_mcasp
-	modprobe snd_soc_botic_codec
+	modprobe snd_soc_sabre32
+	#modprobe snd_soc_botic_codec
 	modprobe snd_soc_botic
 
 config:
