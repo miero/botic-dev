@@ -5,7 +5,8 @@ DTC_FLAGS += -@
 endif
 
 dtb-$(CONFIG_SOC_AM33XX) += \
-	am335x-boneblack-botic.dtb
+	am335x-boneblack-botic.dtb \
+	am335x-boneblack-botic-sabre32.dtb
 endif
 
 always		:= $(dtb-y)

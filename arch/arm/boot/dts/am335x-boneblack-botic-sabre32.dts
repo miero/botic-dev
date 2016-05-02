@@ -1,0 +1,147 @@
+/*
+ * Copyright (C) 2012 Texas Instruments Incorporated - http://www.ti.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+/dts-v1/;
+
+#include "am33xx.dtsi"
+#include "am335x-bone-common.dtsi"
+#include "am33xx-overlay-edma-fix.dtsi"
+
+/ {
+	model = "TI AM335x BeagleBone Black";
+	compatible = "ti,am335x-bone-black", "ti,am335x-bone", "ti,am33xx";
+};
+
+&ldo3_reg {
+	regulator-min-microvolt = <1800000>;
+	regulator-max-microvolt = <1800000>;
+	regulator-always-on;
+};
+
+&mmc1 {
+	vmmc-supply = <&vmmcsd_fixed>;
+};
+
+&mmc2 {
+	vmmc-supply = <&vmmcsd_fixed>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&emmc_pins>;
+	bus-width = <8>;
+	status = "okay";
+};
+
+&rtc {
+	system-power-controller;
+};
+
+/ {
+	sabre32_codec: sabre32_codec {
+		compatible = "sabre32-audio-codec";
+		status = "okay";
+		i2c-bus = <&i2c1>; /* Isolated I2C bus on Hermes-BBB. */
+	};
+
+	botic {
+		compatible = "botic-audio-card";
+		status = "okay";
+
+		pinctrl-names = "init", "default", "compat";
+		pinctrl-0 = <&botic_cape_common_pins>;
+		pinctrl-1 = <&botic_cape_common_pins &botic_cape_default_pins>;
+		pinctrl-2 = <&botic_cape_common_pins &botic_cape_compat_pins>;
+
+		audio-port = <&mcasp0>;
+		audio-codec = <&sabre32_codec>;
+		audio-codec-dai = "sabre32-hifi";
+
+		int-masterclk-enable = <&gpio1 27 0>;
+		ext-masterclk-switch = <&gpio0 15 0>;
+		dsd-format-switch = <&gpio0 14 0>;
+		card-power-switch = <&gpio1 18 0>;
+	};
+};
+
+&am33xx_pinmux {
+	botic_cape_common_pins: botic_cape_common_pins {
+		pinctrl-single,pins = <
+			/* onboard 24.576MHz oscillator control */
+			0x06c 0x07      /* gpmc_a11.gpio1_27,         MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+			/* external masterclock enable */
+			0x048 0x07      /* gpmc_a2.gpio1_18           MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+			/* external masterclock switch */
+			0x184 0x07      /* uart1_txd.gpio0_15         MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+			/* DSD format switch */
+			0x180 0x07      /* uart1_rxd.gpio0_14         MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+			/* master clock */
+			0x1ac 0x28      /* mcasp0_ahclkx,             MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+			/* bitclock */
+			0x190 0x28      /* mcasp0_aclkx,              MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+			/* wordclock */
+			0x194 0x28      /* mcasp0_fsx,                MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+			/* data pins */
+			0x198 0x28      /* mcasp0_axr0,               MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+			0x1a8 0x28      /* mcasp0_axr1,               MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+			0x1a4 0x2a      /* mcasp0_fsr.mcasp0.axr3,    MUX_MODE2 | PIN_INPUT(/OUTPUT) */
+			/* disable CLKOUT2 to allow usage of mcasp0_axr1 on P9_42 */
+			0x1b4 0x2f      /* xdma_event_intr1.gpio0_20, MUX_MODE7 | PIN_INPUT */
+		>;
+	};
+	botic_cape_default_pins: botic_cape_default_pins {
+		/* this configuration will allow to use AHCLKR in asynchronous mode later */
+		pinctrl-single,pins = <
+			/* data pins */
+			0x1a0 0x2a      /* mcasp0_aclkr.mcasp0_axr2,  MUX_MODE2 | PIN_INPUT(/OUTPUT) */
+			/* disable eCAP0_in_PWM0_out to allow usage of mcasp0_axr2 on P9_41 */
+			0x164 0x2f      /* ecap0_in_pwm0_out.gpio0_7, MUX_MODE7 | PIN_INPUT */
+		>;
+	};
+	botic_cape_compat_pins: botic_cape_compat_pins {
+		/* compatible with original BBB setup, this output is connected also to HDMI transmitter */
+		pinctrl-single,pins = <
+			/* data pins */
+			0x19c 0x2a      /* mcasp0_ahclkr.mcasp0_axr2, MUX_MODE2 | PIN_INPUT(/OUTPUT) */
+		>;
+	};
+
+	i2c1_pins: pinmux_bb_i2c1_pins {
+		pinctrl-single,pins = <
+			0x158 0x72
+			0x15c 0x72
+		>;
+	};
+};
+
+/* Enable McASP. Default parameters can be changed during run-time. */
+&mcasp0 {
+	status = "okay";
+	op-mode = <0>;          /* MCASP_IIS_MODE */
+	tdm-slots = <2>;
+	num-serializer = <4>;
+	serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
+		1 1 1 1
+	>;
+	tx-num-evt = <16>;
+	rx-num-evt = <1>;
+};
+
+/* Enable ADC driver. */
+&tscadc {
+	status = "okay";
+};
+
+/* (Hermes-BBB) A digital volume pot is connected to the AIN4. */
+&am335x_adc {
+	ti,adc-channels = <4>;
+};
+
+/* (Hermes-BBB) The I2C1 for isolated I2C access. */
+&i2c1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pins>;
+	clock-frequency = <100000>;
+};
