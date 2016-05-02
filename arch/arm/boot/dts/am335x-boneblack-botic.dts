@@ -42,7 +42,6 @@
 	botic_codec: botic_codec {
 		compatible = "botic-audio-codec";
 		status = "okay";
-		i2c-bus = <&i2c1>; /* Isolated I2C bus on Hermes-BBB. */
 	};
 
 	botic {
@@ -56,7 +55,7 @@
 
 		audio-port = <&mcasp0>;
 		audio-codec = <&botic_codec>;
-		audio-codec-dai = "dac-hifi";
+		audio-codec-dai = "botic-hifi";
 
 		int-masterclk-enable = <&gpio1 27 0>;
 		ext-masterclk-switch = <&gpio0 15 0>;
