@@ -671,6 +671,9 @@ static int sabre32_codec_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 
     /* Mute the DAC before adjusting the parameters. */
     (void)regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
+    /* Switch to external volume. */
+    (void)sabre32_master_trim_write(codec_data->client1,
+            codec_data->master_volume);
 
     switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
     case SND_SOC_DAIFMT_DIT:
@@ -724,16 +727,16 @@ static int sabre32_codec_mute_stream(struct snd_soc_dai *dai, int mute, int stre
 
     if (mute) {
         /* Reconfigure the DAC for a SPDIF playback from an external device. */
-
         /* Mute the DAC first. */
         (void)regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
-
         /* Force SPDIF input. */
         (void)regmap_update_bits(codec_data->client1, 8, 0x80, 0x80);
         /* Re-enable SPDIF autodetect. */
         (void)regmap_update_bits(codec_data->client1, 17, 0x08, 0x08);
+        /* Switch to external volume. */
+        (void)sabre32_master_trim_write(codec_data->client1,
+                codec_data->external_volume);
         /* TODO: other parameters, e.g. DPLL */
-
         /* Unmute the DAC after reconfiguration. */
         if (!codec_data->external_mute)
             ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
