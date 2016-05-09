@@ -39,8 +39,10 @@ struct sabre32_codec_data {
     struct i2c_client *i2c_client2;
     struct regmap *client2;
     int stream_muted; /* ALSA is not playing */
-    int force_mute; /* Master Mute control */
-    int mute_mode; /* Mute Codec if not playing? */
+    unsigned int master_volume;
+    int master_mute;
+    unsigned int external_volume;
+    int external_mute;
     int last_clock_48k;
 };
 
@@ -188,12 +190,6 @@ static const char *os_filter_text[] = {
 
 static SOC_ENUM_SINGLE_DECL(os_filter, 10, 0, os_filter_text);
 
-static const char *mute_mode_text[] = {
-    "Never", "On Idle"
-};
-
-static SOC_ENUM_SINGLE_DECL(mute_mode, 11, 0, mute_mode_text);
-
 static const char *remap_inputs_text[] = {
     "12345678", "12345676", "12345658", "12345656",
     "12325678", "12325676", "12325658", "12325656",
@@ -231,10 +227,12 @@ static const struct snd_kcontrol_new sabre32_codec_controls[] = {
     SOC_ENUM("True Mono", true_mono),
     SOC_ENUM("DPLL Phase", dpll_phase),
     SOC_ENUM("Oversampling Filter", os_filter),
-    SOC_ENUM("Mute Mode", mute_mode),
     SOC_ENUM("Remap Inputs", remap_inputs),
     SOC_ENUM("MCLK Notch", mclk_notch),
     SOC_ENUM("Remap Output", remap_output),
+    SOC_DOUBLE_TLV("External Playback Volume", 15, 0, 0, VOLUME_MAXATTEN, 1,
+            master_tlv),
+    SOC_SINGLE("External Playback Switch", 16, 0, 1, 1),
     SOC_SINGLE_TLV("DAC1 Playback Volume", 20, 0, 255, 1, dac_tlv),
     SOC_SINGLE_TLV("DAC2 Playback Volume", 21, 0, 255, 1, dac_tlv),
     SOC_SINGLE_TLV("DAC3 Playback Volume", 22, 0, 255, 1, dac_tlv),
@@ -294,9 +292,9 @@ static int sabre32_codec_probe(struct snd_soc_codec *codec)
     }
 
     /* Initialize codec params. */
-    codec_data->force_mute = 0;
     codec_data->stream_muted = 1;
-    codec_data->mute_mode = 1;
+    codec_data->master_mute = 0;
+    codec_data->external_mute = 1;
     codec_data->last_clock_48k = -1; /* force relock on the first use */
 
     if (0) {
@@ -327,6 +325,71 @@ static int sabre32_codec_remove(struct snd_soc_codec *codec)
     return 0;
 }
 
+static int sabre32_master_trim_read(
+        struct regmap *client,
+        unsigned int *val)
+{
+    unsigned int v;
+    unsigned int t, t2;
+    int r = 0;
+
+    r = regmap_read(client, 23, &t);
+    v = t & 0x7f;
+    v <<= 8;
+    r |= regmap_read(client, 22, &t);
+    v |= t;
+    v <<= 8;
+    r |= regmap_read(client, 21, &t);
+    v |= t;
+    v <<= 8;
+    r |= regmap_read(client, 20, &t);
+    v |= t;
+    /* convert 0x7fffffff--0 to 0-VOLUME_MAXATTEN */
+    t = v;
+    if (t != 0) {
+        v = 0;
+        while (t <= volume_steps[VOLUME_HALFSTEPS]) {
+            t <<= 1;
+            v += VOLUME_HALFSTEPS;
+        }
+        for (t2 = 1; t2 < VOLUME_HALFSTEPS; t2++) {
+            if (t > volume_steps[t2])
+                break;
+            v++;
+        }
+        if (v > VOLUME_MAXATTEN)
+            v = VOLUME_MAXATTEN;
+    } else
+        v = VOLUME_MAXATTEN;
+
+    *val = v;
+
+    return r;
+}
+
+static int sabre32_master_trim_write(
+        struct regmap *client,
+        unsigned int val)
+{
+    unsigned int t;
+    int ret;
+
+    if (val < VOLUME_MAXATTEN)
+        t = volume_steps[val % VOLUME_HALFSTEPS] >>
+            (val / VOLUME_HALFSTEPS);
+    else
+        t = 0;
+    ret = regmap_write(client, 20, t & 0xff);
+    t >>= 8;
+    ret |= regmap_write(client, 21, t & 0xff);
+    t >>= 8;
+    ret |= regmap_write(client, 22, t & 0xff);
+    t >>= 8;
+    ret |= regmap_write(client, 23, t);
+
+    return ret;
+}
+
 static unsigned int sabre32_codec_read(struct snd_soc_codec *codec,
         unsigned int reg)
 {
@@ -340,37 +403,24 @@ static unsigned int sabre32_codec_read(struct snd_soc_codec *codec,
 
     switch(reg) {
     case 0: /* Master Volume */
-        r = regmap_read(codec_data->client1, 23, &t);
-        v = t & 0x7f;
-        v <<= 8;
-        r |= regmap_read(codec_data->client1, 22, &t);
-        v |= t;
-        v <<= 8;
-        r |= regmap_read(codec_data->client1, 21, &t);
-        v |= t;
-        v <<= 8;
-        r |= regmap_read(codec_data->client1, 20, &t);
-        v |= t;
-        /* convert 0x7fffffff--0 to 0-VOLUME_MAXATTEN */
-        t = v;
-        if (t != 0) {
-            v = 0;
-            while (t <= volume_steps[VOLUME_HALFSTEPS]) {
-                t <<= 1;
-                v += VOLUME_HALFSTEPS;
-            }
-            for (t2 = 1; t2 < VOLUME_HALFSTEPS; t2++) {
-                if (t > volume_steps[t2])
-                    break;
-                v++;
-            }
-            if (v > VOLUME_MAXATTEN)
-                v = VOLUME_MAXATTEN;
+        if (!codec_data->stream_muted) {
+            r = sabre32_master_trim_read(codec_data->client1, &v);
+            codec_data->master_volume = v;
         } else
-            v = VOLUME_MAXATTEN;
+            v = codec_data->master_volume;
         break;
     case 1: /* Master Volume Mute */
-        v = codec_data->force_mute;
+        v = codec_data->master_mute;
+        break;
+    case 15: /* External Volume */
+        if (codec_data->stream_muted) {
+            r = sabre32_master_trim_read(codec_data->client1, &v);
+            codec_data->external_volume = v;
+        } else
+            v = codec_data->external_volume;
+        break;
+    case 16: /* External Volume Mute */
+        v = codec_data->external_mute;
         break;
     case 2: /* SPDIF Source */
         v = 0;
@@ -438,9 +488,6 @@ static unsigned int sabre32_codec_read(struct snd_soc_codec *codec,
         r = regmap_read(codec_data->client1, 17, &t);
         v = !!(t & 0x40);
         break;
-    case 11: /* Mute Mode */
-        v = codec_data->mute_mode;
-        break;
     case 12: /* Remap Inputs */
         r = regmap_read(codec_data->client1, 14, &t);
         v = (t & 0xf0) >> 4;
@@ -489,7 +536,6 @@ static int sabre32_codec_write(struct snd_soc_codec *codec,
         unsigned int reg, unsigned int val)
 {
     struct sabre32_codec_data *codec_data = snd_soc_codec_get_drvdata(codec);
-    unsigned int t;
     int ret = 0;
 
     if (codec_data->client1 == NULL)
@@ -497,25 +543,26 @@ static int sabre32_codec_write(struct snd_soc_codec *codec,
 
     switch(reg) {
     case 0: /* Master Volume */
-        if (val < VOLUME_MAXATTEN)
-            t = volume_steps[val % VOLUME_HALFSTEPS] >>
-                (val / VOLUME_HALFSTEPS);
-        else
-            t = 0;
-        ret = regmap_write(codec_data->client1, 20, t & 0xff);
-        t >>= 8;
-        ret |= regmap_write(codec_data->client1, 21, t & 0xff);
-        t >>= 8;
-        ret |= regmap_write(codec_data->client1, 22, t & 0xff);
-        t >>= 8;
-        ret |= regmap_write(codec_data->client1, 23, t);
+        if (!codec_data->stream_muted) {
+            ret = sabre32_master_trim_write(codec_data->client1, val);
+        }
+        codec_data->master_volume = val;
         break;
     case 1: /* Master Volume Mute */
-        codec_data->force_mute = val;
-        if (codec_data->force_mute)
-            ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
-        else if (!codec_data->stream_muted)
-            ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
+        if (!codec_data->stream_muted)
+            ret = regmap_update_bits(codec_data->client1, 10, 0x01, val);
+        codec_data->master_mute = val;
+        break;
+    case 15: /* External Volume */
+        if (codec_data->stream_muted) {
+            ret = sabre32_master_trim_write(codec_data->client1, val);
+        }
+        codec_data->external_volume = val;
+        break;
+    case 16: /* External Volume Mute */
+        if (codec_data->stream_muted)
+            ret = regmap_update_bits(codec_data->client1, 10, 0x01, val);
+        codec_data->external_mute = val;
         break;
     case 2: /* SPDIF Source */
         ret = regmap_write(codec_data->client1, 18, 1U << val);
@@ -568,16 +615,6 @@ static int sabre32_codec_write(struct snd_soc_codec *codec,
         break;
     case 10: /* Oversampling Filter */
         ret = regmap_update_bits(codec_data->client1, 17, 0x40, 0x40 * !!val);
-        break;
-    case 11: /* Mute Mode */
-        codec_data->mute_mode = val;
-        if (codec_data->mute_mode != 0) {
-            if (codec_data->stream_muted)
-                ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
-        } else {
-            if (!codec_data->force_mute)
-                ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
-        }
         break;
     case 12: /* Remap Inputs */
         ret = regmap_update_bits(codec_data->client1, 14, 0xf0, val << 4);
@@ -698,9 +735,9 @@ static int sabre32_codec_mute_stream(struct snd_soc_dai *dai, int mute, int stre
         /* TODO: other parameters, e.g. DPLL */
 
         /* Unmute the DAC after reconfiguration. */
-        if (codec_data->mute_mode == 0)
+        if (!codec_data->external_mute)
             ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
-    } else if (!codec_data->force_mute) {
+    } else if (!codec_data->master_mute) {
         /* Unmute the DAC if it is not muted by user. */
         ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
     }
