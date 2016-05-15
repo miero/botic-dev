@@ -549,7 +549,7 @@ static int sabre32_codec_write(struct snd_soc_codec *codec,
         codec_data->master_volume = val;
         break;
     case 1: /* Master Volume Mute */
-        if (!codec_data->stream_muted)
+        if (!codec_data->stream_muted || !codec_data->external_mute)
             ret = regmap_update_bits(codec_data->client1, 10, 0x01, val);
         codec_data->master_mute = val;
         break;
@@ -671,7 +671,7 @@ static int sabre32_codec_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 
     /* Mute the DAC before adjusting the parameters. */
     (void)regmap_update_bits(codec_data->client1, 10, 0x01, 0x01);
-    /* Switch to external volume. */
+    /* Switch to the master volume. */
     (void)sabre32_master_trim_write(codec_data->client1,
             codec_data->master_volume);
 
@@ -738,7 +738,7 @@ static int sabre32_codec_mute_stream(struct snd_soc_dai *dai, int mute, int stre
                 codec_data->external_volume);
         /* TODO: other parameters, e.g. DPLL */
         /* Unmute the DAC after reconfiguration. */
-        if (!codec_data->external_mute)
+        if (!codec_data->master_mute && !codec_data->external_mute)
             ret = regmap_update_bits(codec_data->client1, 10, 0x01, 0x00);
     } else if (!codec_data->master_mute) {
         /* Unmute the DAC if it is not muted by user. */
