@@ -33,9 +33,9 @@ static const struct snd_pcm_hardware edma_pcm_hardware = {
 				  SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME |
 				  SNDRV_PCM_INFO_NO_PERIOD_WAKEUP |
 				  SNDRV_PCM_INFO_INTERLEAVED,
-	.buffer_bytes_max	= 16 * 128 * 1024,
+	.buffer_bytes_max	= 24 * 128 * 1024,
 	.period_bytes_min	= 32,
-	.period_bytes_max	= 16 * 64 * 1024,
+	.period_bytes_max	= 24 * 64 * 1024,
 	.periods_min		= 2,
 	.periods_max		= 19, /* Limit by edma dmaengine driver */
 };
@@ -44,7 +44,7 @@ static const struct snd_dmaengine_pcm_config edma_dmaengine_pcm_config = {
 	.pcm_hardware = &edma_pcm_hardware,
 	.prepare_slave_config = snd_dmaengine_pcm_prepare_slave_config,
 	.compat_filter_fn = edma_filter_fn,
-	.prealloc_buffer_size = 16 * 128 * 1024,
+	.prealloc_buffer_size = 24 * 128 * 1024,
 };
 
 int edma_pcm_platform_register(struct device *dev)
