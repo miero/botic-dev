@@ -32,7 +32,6 @@
             SNDRV_PCM_RATE_96000 | \
             SNDRV_PCM_RATE_192000 | \
             SNDRV_PCM_RATE_384000 | \
-            SNDRV_PCM_RATE_768000 | \
             0)
 
 #define BOTIC_FORMATS (\
@@ -51,7 +50,7 @@ static struct snd_soc_dai_driver botic_codec_dai = {
         .channels_min = 2,
         .channels_max = 8,
         .rate_min = 11025,
-        .rate_max = 768000,
+        .rate_max = 384000,
         .rates = BOTIC_RATES,
         .formats = BOTIC_FORMATS,
     },
@@ -59,7 +58,7 @@ static struct snd_soc_dai_driver botic_codec_dai = {
         .channels_min = 2,
         .channels_max = 8,
         .rate_min = 11025,
-        .rate_max = 768000,
+        .rate_max = 384000,
         .rates = BOTIC_RATES,
         .formats = BOTIC_FORMATS,
     },

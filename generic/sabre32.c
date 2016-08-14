@@ -61,7 +61,6 @@ struct sabre32_codec_data {
             SNDRV_PCM_RATE_96000 | \
             SNDRV_PCM_RATE_192000 | \
             SNDRV_PCM_RATE_384000 | \
-            SNDRV_PCM_RATE_768000 | \
             0)
 
 #define SABRE32_FORMATS (\
@@ -82,7 +81,7 @@ static struct snd_soc_dai_driver sabre32_codec_dai = {
         .channels_min = 2,
         .channels_max = 8,
         .rate_min = 11025,
-        .rate_max = 768000,
+        .rate_max = 384000,
         .rates = SABRE32_RATES,
         .formats = SABRE32_FORMATS,
     },
@@ -94,7 +93,7 @@ static struct snd_soc_dai_driver sabre32_codec_dai = {
         .channels_min = 2,
         .channels_max = 8,
         .rate_min = 11025,
-        .rate_max = 768000,
+        .rate_max = 384000,
         .rates = SABRE32_RATES,
         .formats = SABRE32_FORMATS,
     },
