@@ -54,7 +54,6 @@ struct sabre32_codec_data {
             SNDRV_PCM_RATE_88200 | \
             SNDRV_PCM_RATE_176400 | \
             SNDRV_PCM_RATE_352800 | \
-            SNDRV_PCM_RATE_705600 | \
             SNDRV_PCM_RATE_16000 | \
             SNDRV_PCM_RATE_32000 | \
             SNDRV_PCM_RATE_48000 | \

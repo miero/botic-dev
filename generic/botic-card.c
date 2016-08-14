@@ -472,7 +472,7 @@ static int asoc_botic_card_probe(struct platform_device *pdev)
             ~(SNDRV_PCM_RATE_5512 | SNDRV_PCM_RATE_11025 |
               SNDRV_PCM_RATE_22050 | SNDRV_PCM_RATE_44100 |
               SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_176400 |
-              SNDRV_PCM_RATE_352800 | SNDRV_PCM_RATE_705600 |
+              SNDRV_PCM_RATE_352800 |
               0);
     }
     if (clk_48k == 0) {
@@ -480,7 +480,7 @@ static int asoc_botic_card_probe(struct platform_device *pdev)
             ~(SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
               SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000 |
               SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_192000 |
-              SNDRV_PCM_RATE_384000 | SNDRV_PCM_RATE_768000 |
+              SNDRV_PCM_RATE_384000 |
               0);
     }
 #endif

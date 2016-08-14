@@ -1549,7 +1549,7 @@ static int davinci_mcasp_resume(struct snd_soc_dai *dai)
 #define davinci_mcasp_resume NULL
 #endif
 
-#define DAVINCI_MCASP_RATES	(SNDRV_PCM_RATE_8000_768000 | SNDRV_PCM_RATE_CONTINUOUS)
+#define DAVINCI_MCASP_RATES	(SNDRV_PCM_RATE_8000_384000 | SNDRV_PCM_RATE_CONTINUOUS)
 
 #define DAVINCI_MCASP_PCM_FMTS (SNDRV_PCM_FMTBIT_S8 | \
 				SNDRV_PCM_FMTBIT_U8 | \
