@@ -112,6 +112,8 @@ struct davinci_mcasp {
 	struct snd_pcm_hw_constraint_list chconstr[2];
 };
 
+static int mute_pin = -1;
+
 static inline void mcasp_set_bits(struct davinci_mcasp *mcasp, u32 offset,
 				  u32 val)
 {
@@ -800,7 +802,7 @@ static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 	} else {
 		disable_pins = 0;
 	}
-	mcasp_set_reg(mcasp, DAVINCI_MCASP_PFUNC_REG, disable_pins);
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_PFUNC_REG, disable_pins, AFSX | ACLKX);
 	mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, disable_pins);
 	mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, disable_pins);
 
@@ -817,15 +819,25 @@ static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 			       mcasp->serial_dir[i]);
 		if (mcasp->serial_dir[i] == TX_MODE &&
 					tx_ser < max_active_serializers) {
+			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PFUNC_REG, AXR(i));
 			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, AXR(i));
 			mcasp_mod_bits(mcasp, DAVINCI_MCASP_XRSRCTL_REG(i),
 				       DISMOD_LOW, DISMOD_MASK);
 			tx_ser++;
 		} else if (mcasp->serial_dir[i] == RX_MODE &&
 					rx_ser < max_active_serializers) {
+			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PFUNC_REG, AXR(i));
 			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDIR_REG, AXR(i));
 			rx_ser++;
 		} else {
+			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, AXR(i));
+			if (mute_pin == i ||
+					(mute_pin == 4 && (i == 2 || i == 3))) {
+				mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(i));
+			} else {
+				mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(i));
+			}
+			mcasp_set_bits(mcasp, DAVINCI_MCASP_PFUNC_REG, AXR(i));
 			mcasp_mod_bits(mcasp, DAVINCI_MCASP_XRSRCTL_REG(i),
 				       SRMOD_INACTIVE, SRMOD_MASK);
 		}
@@ -1459,6 +1471,30 @@ static void davinci_mcasp_shutdown(struct snd_pcm_substream *substream,
 		mcasp->channels = 0;
 }
 
+static int davinci_mcasp_mute_stream(struct snd_soc_dai *cpu_dai,
+				   int mute, int stream)
+{
+	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(cpu_dai);
+
+	if (mute_pin >= 0 || mute_pin <= 3) {
+		if (mute) {
+			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(mute_pin));
+		} else {
+			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(mute_pin));
+		}
+	} else if (mute_pin == 4) {
+		if (mute) {
+			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(2));
+			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(3));
+		} else {
+			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(2));
+			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(3));
+		}
+	}
+
+	return 0;
+}
+
 static const struct snd_soc_dai_ops davinci_mcasp_dai_ops = {
 	.startup	= davinci_mcasp_startup,
 	.shutdown	= davinci_mcasp_shutdown,
@@ -1469,6 +1505,7 @@ static const struct snd_soc_dai_ops davinci_mcasp_dai_ops = {
 	.set_sysclk	= davinci_mcasp_set_sysclk,
 	.set_tdm_slot	= davinci_mcasp_set_tdm_slot,
 	.set_channel_map	= davinci_mcasp_set_channel_map,
+	.mute_stream = davinci_mcasp_mute_stream,
 };
 
 static int davinci_mcasp_dai_probe(struct snd_soc_dai *dai)
@@ -2128,6 +2165,9 @@ static struct platform_driver davinci_mcasp_driver = {
 };
 
 module_platform_driver(davinci_mcasp_driver);
+
+module_param(mute_pin, int, 0644);
+MODULE_PARM_DESC(mute_pin, "use some of McASP pins as mute pin: 0:0, 1:1, 2:2, 3:3, 4:2+3");
 
 MODULE_AUTHOR("Steve Chen");
 MODULE_DESCRIPTION("TI DAVINCI McASP SoC Interface");
