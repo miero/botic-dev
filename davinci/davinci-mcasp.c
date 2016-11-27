@@ -112,7 +112,7 @@ struct davinci_mcasp {
 	struct snd_pcm_hw_constraint_list chconstr[2];
 };
 
-static int mute_pin = -1;
+static int mute_pins = 0;
 
 static inline void mcasp_set_bits(struct davinci_mcasp *mcasp, u32 offset,
 				  u32 val)
@@ -831,11 +831,11 @@ static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 			rx_ser++;
 		} else {
 			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, AXR(i));
-			if (mute_pin == i ||
-					(mute_pin == 4 && (i == 2 || i == 3))) {
-				mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(i));
-			} else {
+			if ((mute_pins & AXR(i)) == 0 ||
+					((mute_pins & AXR(i)) != 0 && ((mute_pins & BIT(24)) != 0))) {
 				mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(i));
+			} else {
+				mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(i));
 			}
 			mcasp_set_bits(mcasp, DAVINCI_MCASP_PFUNC_REG, AXR(i));
 			mcasp_mod_bits(mcasp, DAVINCI_MCASP_XRSRCTL_REG(i),
@@ -1475,20 +1475,20 @@ static int davinci_mcasp_mute_stream(struct snd_soc_dai *cpu_dai,
 				   int mute, int stream)
 {
 	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(cpu_dai);
+	int i;
 
-	if (mute_pin >= 0 || mute_pin <= 3) {
-		if (mute) {
-			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(mute_pin));
-		} else {
-			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(mute_pin));
-		}
-	} else if (mute_pin == 4) {
-		if (mute) {
-			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(2));
-			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(3));
-		} else {
-			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(2));
-			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(3));
+	if (((mute_pins & BIT(24)) != 0)) {
+		/* invert mute */
+		mute = !mute;
+	}
+
+	for (i = 0; i < mcasp->num_serializer; i++) {
+		if ((mute_pins & AXR(i)) != 0) {
+			if (mute) {
+				mcasp_set_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(i));
+			} else {
+				mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, AXR(i));
+			}
 		}
 	}
 
@@ -2166,8 +2166,8 @@ static struct platform_driver davinci_mcasp_driver = {
 
 module_platform_driver(davinci_mcasp_driver);
 
-module_param(mute_pin, int, 0644);
-MODULE_PARM_DESC(mute_pin, "use some of McASP pins as mute pin: 0:0, 1:1, 2:2, 3:3, 4:2+3");
+module_param(mute_pins, int, 0644);
+MODULE_PARM_DESC(mute_pins, "use some of McASP pins as mute pin (bits 0-3), invert mute (bit 24)");
 
 MODULE_AUTHOR("Steve Chen");
 MODULE_DESCRIPTION("TI DAVINCI McASP SoC Interface");
