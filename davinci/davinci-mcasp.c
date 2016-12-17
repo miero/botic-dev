@@ -92,6 +92,7 @@ struct davinci_mcasp {
 	int	streams;
 	u32	irq_request[2];
 	int	dma_request[2];
+	bool	dsd_mode[2];
 
 	int	sysclk_freq;
 	bool	bclk_master;
@@ -407,6 +408,8 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 
 	pm_runtime_get_sync(mcasp->dev);
 	if ((fmt & SND_SOC_DAIFMT_FORMAT_MASK) == SND_SOC_DAIFMT_DIT) {
+		if (mcasp->dsd_mode[SNDRV_PCM_STREAM_PLAYBACK])
+			return -EINVAL;
 		mcasp->op_mode = DAVINCI_MCASP_DIT_MODE;
 		goto out;
 	}
@@ -787,30 +790,40 @@ static int davinci_config_channel_size(struct davinci_mcasp *mcasp,
 }
 
 static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
-				 int period_words, int channels, bool dsd_mode)
+				 int period_words, int channels)
 {
 	struct snd_dmaengine_dai_dma_data *dma_data = &mcasp->dma_data[stream];
 	int i;
 	u8 tx_ser = 0;
 	u8 rx_ser = 0;
-	u8 slots = dsd_mode ? 1 : mcasp->tdm_slots;
+	u8 slots = mcasp->dsd_mode[stream] ? 1 : mcasp->tdm_slots;
 	u8 max_active_serializers = (channels + slots - 1) / slots;
 	int active_serializers, numevt;
 	u32 reg;
 	u32 disable_pins;
+	u32 disable_pins_mask;
 
 	/* Default configuration */
 	if (mcasp->version < MCASP_VERSION_3)
 		mcasp_set_bits(mcasp, DAVINCI_MCASP_PWREMUMGT_REG, MCASP_SOFT);
 
-	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE) {
-		disable_pins = AFSX | ACLKX;
-	} else if (dsd_mode) {
-		disable_pins = AFSX;
-	} else {
+	if (stream != SNDRV_PCM_STREAM_PLAYBACK) {
+		/* do not modify receiving pins */
 		disable_pins = 0;
+		disable_pins_mask = 0;
+	} else if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE) {
+		disable_pins = AFSX | ACLKX;
+		disable_pins_mask = AFSX | ACLKX;
+	} else if (mcasp->dsd_mode[stream]) {
+		disable_pins = AFSX;
+		disable_pins_mask = AFSX | ACLKX;
+	} else {
+		/* re-enable previously disabled pins */
+		disable_pins = 0;
+		disable_pins_mask = AFSX | ACLKX;
 	}
-	mcasp_mod_bits(mcasp, DAVINCI_MCASP_PFUNC_REG, disable_pins, AFSX | ACLKX);
+	mcasp_mod_bits(mcasp, DAVINCI_MCASP_PFUNC_REG, disable_pins,
+			disable_pins_mask);
 	mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDOUT_REG, disable_pins);
 	mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, disable_pins);
 
@@ -916,7 +929,7 @@ static int mcasp_common_hw_param(struct davinci_mcasp *mcasp, int stream,
 }
 
 static int mcasp_i2s_hw_param(struct davinci_mcasp *mcasp, int stream,
-			      int channels, bool dsd_mode)
+			      int channels)
 {
 	int i, active_slots;
 	int total_slots;
@@ -962,7 +975,7 @@ static int mcasp_i2s_hw_param(struct davinci_mcasp *mcasp, int stream,
 	if (!mcasp->dat_port)
 		busel = TXSEL;
 
-	if (dsd_mode) {
+	if (mcasp->dsd_mode[stream]) {
 		mask = 1;
 		busel = 0;
 		mod = 0;
@@ -1143,13 +1156,11 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 {
 	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(cpu_dai);
 	int word_length;
-	bool dsd_mode = is_dsd(params_format(params));
 	int channels = params_channels(params);
 	int period_size = params_period_size(params);
 	int ret;
 
-	if (dsd_mode && mcasp->op_mode == DAVINCI_MCASP_DIT_MODE)
-		return -EINVAL;
+	mcasp->dsd_mode[substream->stream] = is_dsd(params_format(params));
 
 	ret = davinci_mcasp_set_dai_fmt(cpu_dai, mcasp->dai_fmt);
 	if (ret)
@@ -1171,15 +1182,14 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	ret = mcasp_common_hw_param(mcasp, substream->stream,
-				    period_size * channels, channels, dsd_mode);
+				    period_size * channels, channels);
 	if (ret)
 		return ret;
 
 	if (mcasp->op_mode == DAVINCI_MCASP_DIT_MODE)
 		ret = mcasp_dit_hw_param(mcasp, params_rate(params));
 	else
-		ret = mcasp_i2s_hw_param(mcasp, substream->stream,
-					 channels, dsd_mode);
+		ret = mcasp_i2s_hw_param(mcasp, substream->stream, channels);
 
 	if (ret)
 		return ret;
