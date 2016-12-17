@@ -54,12 +54,14 @@ struct sabre32_codec_data {
             SNDRV_PCM_RATE_88200 | \
             SNDRV_PCM_RATE_176400 | \
             SNDRV_PCM_RATE_352800 | \
+            SNDRV_PCM_RATE_705600 | \
             SNDRV_PCM_RATE_16000 | \
             SNDRV_PCM_RATE_32000 | \
             SNDRV_PCM_RATE_48000 | \
             SNDRV_PCM_RATE_96000 | \
             SNDRV_PCM_RATE_192000 | \
             SNDRV_PCM_RATE_384000 | \
+            SNDRV_PCM_RATE_768000 | \
             0)
 
 #define SABRE32_FORMATS (\
@@ -80,7 +82,7 @@ static struct snd_soc_dai_driver sabre32_codec_dai = {
         .channels_min = 2,
         .channels_max = 8,
         .rate_min = 11025,
-        .rate_max = 384000,
+        .rate_max = 768000,
         .rates = SABRE32_RATES,
         .formats = SABRE32_FORMATS,
     },
@@ -92,7 +94,7 @@ static struct snd_soc_dai_driver sabre32_codec_dai = {
         .channels_min = 2,
         .channels_max = 8,
         .rate_min = 11025,
-        .rate_max = 384000,
+        .rate_max = 768000,
         .rates = SABRE32_RATES,
         .formats = SABRE32_FORMATS,
     },
@@ -654,8 +656,10 @@ static struct snd_soc_codec_driver sabre32_codec_socdrv = {
     .remove = sabre32_codec_remove,
     .read = sabre32_codec_read,
     .write = sabre32_codec_write,
-    .controls = sabre32_codec_controls,
-    .num_controls = ARRAY_SIZE(sabre32_codec_controls),
+    .component_driver = {
+        .controls = sabre32_codec_controls,
+        .num_controls = ARRAY_SIZE(sabre32_codec_controls),
+    },
 };
 
 static int sabre32_codec_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
