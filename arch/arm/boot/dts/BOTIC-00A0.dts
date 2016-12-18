@@ -1,0 +1,162 @@
+/*
+ * Copyright (C) 2012 Texas Instruments Incorporated - http://www.ti.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/board/am335x-bbw-bbb-base.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/am33xx.h>
+
+/ {
+	compatible = "ti,beaglebone-black", "ti,beaglebone-green";
+
+	/* identification */
+	part-number = "BOTIC";
+	version = "00A0";
+
+	/* state the resources this cape uses */
+	exclusive-use =
+		"P9.17",	/* i2c1_scl */
+		"P9.18",	/* i2c1_sda */
+		/* the pin header uses */
+		"P9.25",	/* mcasp0_ahclkx (oscillator) */
+		"P9.31",	/* mcaps0_aclkx (bit clock) */
+		"P9.29",	/* mcasp0_fsx (lr clock) */
+		"P9.30",	/* mcasp0_axr0 (data0) */
+		"P9.41",	/* mcasp0_axr1 (data1) */
+		"P9.42",	/* mcasp0_axr2 (data2) pinconfig=default */
+		"P9.28",	/* mcasp0_axr2 (data2) pinconfig=compat */
+		"P9.27",	/* mcasp0_axr3 (data3) */
+		"P9.24",	/* uart1_txd (external masterclock switch) */
+		"P9.26",	/* uart1_rxd (I2S/DSD format switch) */
+		"P9.14",	/* gpmc_a2 (cape power switch) */
+		/* the hardware IP uses */
+		"i2c1",
+		"mcasp0";
+
+	fragment@0 {
+		target = <&am33xx_pinmux>;
+		__overlay__ {
+			botic_cape_common_pins: botic_cape_common_pins {
+				pinctrl-single,pins = <
+					/* onboard 24.576MHz oscillator control */
+					0x06c 0x07      /* gpmc_a11.gpio1_27,         MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+					/* external masterclock enable */
+					0x048 0x07      /* gpmc_a2.gpio1_18           MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+					/* external masterclock switch */
+					0x184 0x07      /* uart1_txd.gpio0_15         MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+					/* DSD format switch */
+					0x180 0x07      /* uart1_rxd.gpio0_14         MUX_MODE7 | PIN_OUTPUT_PULLDOWN */
+					/* master clock */
+					0x1ac 0x28      /* mcasp0_ahclkx,             MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+					/* bitclock */
+					0x190 0x28      /* mcasp0_aclkx,              MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+					/* wordclock */
+					0x194 0x28      /* mcasp0_fsx,                MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+					/* data pins */
+					0x198 0x28      /* mcasp0_axr0,               MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+					0x1a8 0x28      /* mcasp0_axr1,               MUX_MODE0 | PIN_INPUT(/OUTPUT) */
+					0x1a4 0x2a      /* mcasp0_fsr.mcasp0.axr3,    MUX_MODE2 | PIN_INPUT(/OUTPUT) */
+					/* disable CLKOUT2 to allow usage of mcasp0_axr1 on P9_42 */
+					0x1b4 0x2f      /* xdma_event_intr1.gpio0_20, MUX_MODE7 | PIN_INPUT */
+				>;
+			};
+			botic_cape_default_pins: botic_cape_default_pins {
+				/* this configuration will allow to use AHCLKR in asynchronous mode later */
+				pinctrl-single,pins = <
+					/* data pins */
+					0x1a0 0x2a      /* mcasp0_aclkr.mcasp0_axr2,  MUX_MODE2 | PIN_INPUT(/OUTPUT) */
+					/* disable eCAP0_in_PWM0_out to allow usage of mcasp0_axr2 on P9_41 */
+					0x164 0x2f      /* ecap0_in_pwm0_out.gpio0_7, MUX_MODE7 | PIN_INPUT */
+				>;
+			};
+			botic_cape_compat_pins: botic_cape_compat_pins {
+				/* compatible with original BBB setup, this output is connected also to HDMI transmitter */
+				pinctrl-single,pins = <
+					/* data pins */
+					0x19c 0x2a      /* mcasp0_ahclkr.mcasp0_axr2, MUX_MODE2 | PIN_INPUT(/OUTPUT) */
+				>;
+			};
+
+			i2c1_pins: pinmux_bb_i2c1_pins {
+				pinctrl-single,pins = <
+					0x158 0x72
+					0x15c 0x72
+				>;
+			};
+		};
+	};
+
+	fragment@3 {
+		target-path="/";
+
+		__overlay__ {
+
+			/* avoid stupid warning */
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			botic_codec: botic_codec {
+				compatible = "botic-audio-codec";
+				status = "okay";
+			};
+
+			botic {
+				compatible = "botic-audio-card";
+				status = "okay";
+
+				pinctrl-names = "init", "default", "compat";
+				pinctrl-0 = <&botic_cape_common_pins>;
+				pinctrl-1 = <&botic_cape_common_pins &botic_cape_default_pins>;
+				pinctrl-2 = <&botic_cape_common_pins &botic_cape_compat_pins>;
+
+				audio-port = <&mcasp0>;
+				audio-codec = <&botic_codec>;
+				audio-codec-dai = "botic-hifi";
+
+				int-masterclk-enable = <&gpio1 27 0>;
+				ext-masterclk-switch = <&gpio0 15 0>;
+				dsd-format-switch = <&gpio0 14 0>;
+				card-power-switch = <&gpio1 18 0>;
+			};
+		};
+	};
+	
+	/* (Hermes-BBB) The I2C1 for isolated I2C access. */
+	fragment@4 {
+		target = <&i2c1>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			status = "okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&i2c1_pins>;
+			clock-frequency = <100000>;
+		};
+	};
+	
+	/* Enable McASP. Default parameters can be changed during run-time. */
+	fragment@5 {
+		target = <&mcasp0>;
+		__overlay__ {
+			status = "okay";
+			op-mode = <0>;          /* MCASP_IIS_MODE */
+			tdm-slots = <2>;
+			num-serializer = <4>;
+			serial-dir = <  /* 0: INACTIVE, 1: TX, 2: RX */
+				1 1 1 1
+			>;
+			tx-num-evt = <16>;
+			rx-num-evt = <1>;
+			autogpio-mask = <0>;
+			autogpio-muted = <0>;
+			autogpio-playing = <0>;
+		};
+	};
+};

@@ -8,7 +8,7 @@ subdir-y += arch/arm/boot/dts
 else
 
 # normal makefile
-KDIR ?= /lib/modules/`uname -r`/build
+export KDIR ?= /lib/modules/`uname -r`/build
 
 build:
 	$(MAKE) -C $(KDIR) M=$$PWD
